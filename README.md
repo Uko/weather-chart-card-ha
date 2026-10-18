@@ -7,7 +7,7 @@
 ![GitHub downloads](https://img.shields.io/github/downloads/w4mhi/weather-chart-card-ha/total?style=flat-square)
 [![License](https://img.shields.io/github/license/w4mhi/weather-chart-card-ha.svg)](LICENSE)
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?repository=https%3A%2F%2Fgithub.com%2Fw4mhi%2Fweather-chart-card-ha&owner=Mihai)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=w4mhi&repository=weather-chart-card-ha)
 
 </div>
 
