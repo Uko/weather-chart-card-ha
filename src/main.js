@@ -1572,12 +1572,15 @@ drawChart({ config, language, weather, forecastItems } = this) {
   }
 
   // Optional: mark today's column (daily forecasts only) with a soft band and a bold date label.
-  const todayIndex = config.forecast.highlight_today && (config.forecast.type || 'daily') === 'daily'
-    ? data.dateTime.findIndex((dt) => this.forecastDateKey(dt) === this.forecastDateKey(new Date()))
-    : -1;
+  // Resolved on every draw: updateChart() reuses this chart instance, so labels and "today" change.
+  const todayIndexOf = (labels) => (config.forecast.highlight_today && (config.forecast.type || 'daily') === 'daily'
+    ? (labels || []).findIndex((dt) => self.forecastDateKey(dt) === self.forecastDateKey(new Date()))
+    : -1);
   const highlightTodayPlugin = {
     id: 'highlightToday',
     beforeDatasetsDraw(chart) {
+      const labels = chart.data.labels || [];
+      const todayIndex = todayIndexOf(labels);
       if (todayIndex < 0) {
         return;
       }
@@ -1587,7 +1590,7 @@ drawChart({ config, language, weather, forecastItems } = this) {
         return;
       }
       const center = xScale.getPixelForValue(todayIndex);
-      const step = data.dateTime.length > 1
+      const step = labels.length > 1
         ? Math.abs(xScale.getPixelForValue(1) - xScale.getPixelForValue(0))
         : area.right - area.left;
       const c = chart.ctx;
@@ -1626,7 +1629,7 @@ drawChart({ config, language, weather, forecastItems } = this) {
           ticks: {
               maxRotation: 0,
               color: config.forecast.chart_datetime_color || textColor,
-              font: (context) => (context.index === todayIndex ? { weight: 'bold' } : {}),
+              font: (context) => (context.index === todayIndexOf(context.chart.data.labels) ? { weight: 'bold' } : {}),
               padding: config.forecast.precipitation_type === 'rainfall' && config.forecast.show_probability && config.forecast.type !== 'hourly' ? 4 : 10,
               callback: function (value, index, values) {
                   var datetime = this.getLabelForValue(value);
