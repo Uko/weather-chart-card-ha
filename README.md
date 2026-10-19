@@ -205,6 +205,7 @@ units:
 | number_of_forecasts            | number  | 0                        | Overrides the number of forecasts to display. Set to "0" for automatic mode.                       |
 | disable_animation              | boolean | false                    | Disable the chart animation.                                                                       |
 | show_date_labels               | boolean | true                     | Show date numbers below weekday labels in daily forecast view.                                     |
+| extra_rows                     | list    | none                     | Extra rows of per-day values under the forecast, read from a list attribute of any entity (daily forecast only). See [Extra Rows](#extra-rows-per-day-values-from-a-sensor). |
 
 ### Units of Measurement
 
@@ -372,6 +373,32 @@ forecast:
   type: daily
   show_date_labels: true  # Shows "MON" and "8" on separate lines
 ```
+
+### Extra Rows (per-day values from a sensor)
+Weather integrations don't provide everything you may want per day — e.g. sunshine hours or a PV yield forecast.
+`extra_rows` shows such values under the forecast, one row per entry, matched to the forecast days by calendar date.
+The source is any entity with a list attribute; each item needs a date (`YYYY-MM-DD`) and a value:
+```yaml
+type: custom:weather-chart-card-ha
+entity: weather.my_home
+forecast:
+  type: daily
+  extra_rows:
+    - entity: sensor.sunshine_forecast
+      attribute: days          # list of objects, e.g. [{date: "2026-10-19", hours: 6}, ...]
+      date_key: date           # default "date"
+      value_key: hours         # default "value"
+      unit: h
+      icon: mdi:weather-sunny
+      icon_color: '#f6b100'
+      decimals: 0
+    - entity: sensor.sunshine_forecast
+      attribute: days
+      value_key: pv_kwh
+      unit: kWh
+      icon: mdi:solar-power-variant
+```
+Days without a value stay empty but keep their column, so the row lines up with the icons above. Rows are hidden in the hourly view.
 
 ### Custom Icon Sizes
 Fine-tune icon sizes for your layout:

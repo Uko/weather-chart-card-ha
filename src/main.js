@@ -92,7 +92,8 @@ static getStubConfig(hass, unusedEntities, allEntities) {
       windDirection: {type: Number},
       forecastChart: {type: Object},
       forecastItems: {type: Number},
-      forecasts: { type: Array }
+      forecasts: { type: Array },
+      extraRowStates: { type: Array }
     };
   }
 
@@ -227,6 +228,16 @@ set hass(hass) {
 
     this.feels_like = this.config.feels_like && hass.states[this.config.feels_like] ? hass.states[this.config.feels_like].state : this.weather.attributes.apparent_temperature;
     this.description = this.config.description && hass.states[this.config.description] ? hass.states[this.config.description].state : this.weather.attributes.description;
+  }
+
+  // Re-render only when one of the extra-row source entities actually changed.
+  const extraRows = this.getExtraRows();
+  if (extraRows.length) {
+    const states = extraRows.map((row) => hass.states[row.entity] || null);
+    const previous = this.extraRowStates || [];
+    if (states.length !== previous.length || states.some((st, i) => st !== previous[i])) {
+      this.extraRowStates = states;
+    }
   }
 
   if (this.weather && !this.forecastSubscriber) {
@@ -1957,6 +1968,33 @@ updateChart({ forecasts, forecastChart } = this) {
           align-items: center;
           margin: 1px;
         }
+        .extra-row {
+          display: flex;
+          justify-content: space-around;
+          align-items: center;
+          margin: 0px 5px;
+          font-weight: 300;
+          cursor: pointer;
+        }
+        .extra-detail {
+          display: flex;
+          flex: 1 1 0;
+          justify-content: center;
+          align-items: center;
+          margin: 1px;
+          min-width: 0;
+        }
+        .extra-detail ha-icon {
+          --mdc-icon-size: 15px;
+          margin-inline-end: 1px;
+        }
+        .extra-value {
+          font-size: 11px;
+        }
+        .extra-unit {
+          font-size: 9px;
+          margin-inline-start: 1px;
+        }
         .wind-details {
           display: flex;
           justify-content: space-around;
@@ -2044,6 +2082,7 @@ updateChart({ forecasts, forecastChart } = this) {
           ` : ''}
           ${this.renderForecastConditionIcons()}
           ${this.renderWind()}
+          ${this.renderExtraRows()}
           ${this.renderLastUpdated()}
         </div>
       </ha-card>
@@ -2547,6 +2586,95 @@ renderWind({ config, weather, windSpeed, windDirection, forecastItems } = this) 
       })}
     </div>
   `;
+}
+
+getExtraRows() {
+  const rows = this.config && this.config.forecast && this.config.forecast.extra_rows;
+  return Array.isArray(rows) ? rows.filter((row) => row && row.entity) : [];
+}
+
+/**
+ * Calendar date (YYYY-MM-DD) of a forecast item in the card's time zone, so it
+ * can be matched against per-day values that a sensor provides.
+ */
+forecastDateKey(datetime) {
+  const date = new Date(datetime);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: this.getSunTimezone(), year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(date);
+  } catch (e) {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+/**
+ * Extra rows of per-day values under the forecast (e.g. sunshine hours or a PV
+ * yield forecast), read from a list attribute of any entity:
+ *   forecast:
+ *     extra_rows:
+ *       - entity: sensor.sunshine
+ *         attribute: days        # list of objects
+ *         date_key: date         # YYYY-MM-DD (default "date")
+ *         value_key: hours       # (default "value")
+ *         unit: h
+ *         icon: mdi:weather-sunny
+ *         icon_color: '#f6b100'  # optional
+ *         decimals: 0
+ * Only daily forecasts; values are matched by calendar date, missing days stay empty.
+ */
+renderExtraRows({ config, forecastItems } = this) {
+  const rows = this.getExtraRows();
+  if (!rows.length || config.show_forecast === false || (config.forecast.type || 'daily') !== 'daily' || !this._hass) {
+    return html``;
+  }
+
+  const forecast = this.forecasts ? this.forecasts.slice(0, forecastItems) : [];
+  if (!forecast.length) {
+    return html``;
+  }
+  const dateKeys = forecast.map((item) => this.forecastDateKey(item.datetime));
+
+  return rows.map((row) => {
+    const stateObj = this._hass.states[row.entity];
+    const list = stateObj && stateObj.attributes ? stateObj.attributes[row.attribute || 'forecast'] : null;
+    if (!Array.isArray(list)) {
+      return html``;
+    }
+    const dateKey = row.date_key || 'date';
+    const valueKey = row.value_key || 'value';
+    const byDate = {};
+    list.forEach((entry) => {
+      if (entry && entry[dateKey] != null) {
+        byDate[String(entry[dateKey]).slice(0, 10)] = entry[valueKey];
+      }
+    });
+    if (!dateKeys.some((key) => key in byDate)) {
+      return html``;
+    }
+    const decimals = Number.isFinite(Number(row.decimals)) ? Number(row.decimals) : null;
+
+    return html`
+      <div class="extra-row" @click="${() => this.showMoreInfo(row.entity)}">
+        ${dateKeys.map((key) => {
+          const value = Number(byDate[key]);
+          if (byDate[key] === null || byDate[key] === undefined || byDate[key] === '' || !Number.isFinite(value)) {
+            return html`<div class="extra-detail"></div>`;
+          }
+          return html`
+            <div class="extra-detail">
+              ${row.icon ? html`<ha-icon icon="${row.icon}" style="${row.icon_color ? `color: ${row.icon_color}` : ''}"></ha-icon>` : ''}
+              <span class="extra-value">${decimals !== null ? value.toFixed(decimals) : value}</span>
+              ${row.unit ? html`<span class="extra-unit">${row.unit}</span>` : ''}
+            </div>
+          `;
+        })}
+      </div>
+    `;
+  });
 }
 
 renderLastUpdated() {
