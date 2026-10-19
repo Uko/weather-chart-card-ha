@@ -1571,8 +1571,36 @@ drawChart({ config, language, weather, forecastItems } = this) {
     };
   }
 
+  // Optional: mark today's column (daily forecasts only) with a soft band and a bold date label.
+  const todayIndex = config.forecast.highlight_today && (config.forecast.type || 'daily') === 'daily'
+    ? data.dateTime.findIndex((dt) => this.forecastDateKey(dt) === this.forecastDateKey(new Date()))
+    : -1;
+  const highlightTodayPlugin = {
+    id: 'highlightToday',
+    beforeDatasetsDraw(chart) {
+      if (todayIndex < 0) {
+        return;
+      }
+      const xScale = chart.scales.x;
+      const area = chart.chartArea;
+      if (!xScale || !area) {
+        return;
+      }
+      const center = xScale.getPixelForValue(todayIndex);
+      const step = data.dateTime.length > 1
+        ? Math.abs(xScale.getPixelForValue(1) - xScale.getPixelForValue(0))
+        : area.right - area.left;
+      const c = chart.ctx;
+      c.save();
+      c.fillStyle = config.forecast.highlight_today_color || 'rgba(127, 127, 127, 0.12)';
+      c.fillRect(Math.max(area.left, center - step / 2), area.top, Math.min(step, area.right - area.left), area.bottom - area.top);
+      c.restore();
+    },
+  };
+
   this.forecastChart = new Chart(ctx, {
     type: 'bar',
+    plugins: [highlightTodayPlugin],
     data: {
       labels: data.dateTime,
       datasets: datasets,
@@ -1598,6 +1626,7 @@ drawChart({ config, language, weather, forecastItems } = this) {
           ticks: {
               maxRotation: 0,
               color: config.forecast.chart_datetime_color || textColor,
+              font: (context) => (context.index === todayIndex ? { weight: 'bold' } : {}),
               padding: config.forecast.precipitation_type === 'rainfall' && config.forecast.show_probability && config.forecast.type !== 'hourly' ? 4 : 10,
               callback: function (value, index, values) {
                   var datetime = this.getLabelForValue(value);

@@ -206,6 +206,8 @@ units:
 | disable_animation              | boolean | false                    | Disable the chart animation.                                                                       |
 | show_date_labels               | boolean | true                     | Show date numbers below weekday labels in daily forecast view.                                     |
 | extra_rows                     | list    | none                     | Extra rows of per-day values under the forecast, read from a list attribute of any entity (daily forecast only). See [Extra Rows](#extra-rows-per-day-values-from-a-sensor). |
+| highlight_today                | boolean | false                    | Highlight today's column in the daily forecast (soft background band, bold date label).            |
+| highlight_today_color          | string  | rgba(127,127,127,0.12)   | Colour of the today band.                                                                          |
 
 ### Units of Measurement
 
@@ -399,6 +401,14 @@ forecast:
       icon: mdi:solar-power-variant
 ```
 Days without a value stay empty but keep their column, so the row lines up with the icons above. Rows are hidden in the hourly view; invalid `decimals` values are ignored.
+
+### Highlight Today
+```yaml
+forecast:
+  type: daily
+  highlight_today: true
+  highlight_today_color: 'rgba(255, 193, 7, 0.15)'   # optional
+```
 
 ### Custom Icon Sizes
 Fine-tune icon sizes for your layout:
