@@ -92,8 +92,7 @@ static getStubConfig(hass, unusedEntities, allEntities) {
       windDirection: {type: Number},
       forecastChart: {type: Object},
       forecastItems: {type: Number},
-      forecasts: { type: Array },
-      extraRowStates: { type: Array }
+      forecasts: { type: Array }
     };
   }
 
@@ -228,16 +227,6 @@ set hass(hass) {
 
     this.feels_like = this.config.feels_like && hass.states[this.config.feels_like] ? hass.states[this.config.feels_like].state : this.weather.attributes.apparent_temperature;
     this.description = this.config.description && hass.states[this.config.description] ? hass.states[this.config.description].state : this.weather.attributes.description;
-  }
-
-  // Re-render only when one of the extra-row source entities actually changed.
-  const extraRows = this.getExtraRows();
-  if (extraRows.length) {
-    const states = extraRows.map((row) => hass.states[row.entity] || null);
-    const previous = this.extraRowStates || [];
-    if (states.length !== previous.length || states.some((st, i) => st !== previous[i])) {
-      this.extraRowStates = states;
-    }
   }
 
   if (this.weather && !this.forecastSubscriber) {
@@ -2603,9 +2592,12 @@ forecastDateKey(datetime) {
     return null;
   }
   try {
-    return new Intl.DateTimeFormat('en-CA', {
+    // Build the key from parts: the formatted string of a locale is not a stable format.
+    const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: this.getSunTimezone(), year: 'numeric', month: '2-digit', day: '2-digit'
-    }).format(date);
+    }).formatToParts(date);
+    const part = (type) => (parts.find((p) => p.type === type) || {}).value;
+    return `${part('year')}-${part('month')}-${part('day')}`;
   } catch (e) {
     return date.toISOString().slice(0, 10);
   }
@@ -2655,7 +2647,9 @@ renderExtraRows({ config, forecastItems } = this) {
     if (!dateKeys.some((key) => key in byDate)) {
       return html``;
     }
-    const decimals = Number.isFinite(Number(row.decimals)) ? Number(row.decimals) : null;
+    // toFixed() throws outside 0..100; ignore invalid values instead of breaking the card.
+    const d = Number(row.decimals);
+    const decimals = row.decimals != null && row.decimals !== '' && Number.isInteger(d) && d >= 0 && d <= 100 ? d : null;
 
     return html`
       <div class="extra-row" @click="${() => this.showMoreInfo(row.entity)}">

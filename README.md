@@ -398,7 +398,7 @@ forecast:
       unit: kWh
       icon: mdi:solar-power-variant
 ```
-Days without a value stay empty but keep their column, so the row lines up with the icons above. Rows are hidden in the hourly view.
+Days without a value stay empty but keep their column, so the row lines up with the icons above. Rows are hidden in the hourly view; invalid `decimals` values are ignored.
 
 ### Custom Icon Sizes
 Fine-tune icon sizes for your layout:
