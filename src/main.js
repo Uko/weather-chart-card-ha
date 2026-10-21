@@ -1543,8 +1543,8 @@ drawChart({ config, language, weather, forecastItems } = this) {
       display: function (context) {
         return 'true';
       },
-      formatter: function (value, context) {
-        return '\u2066' + context.dataset.data[context.dataIndex] + '°\u2069';
+      formatter: (value, context) => {
+        return this.renderBidiMeasurement(context.dataset.data[context.dataIndex] + '°');
       },
       align: 'top',
       anchor: 'center',
@@ -1563,8 +1563,8 @@ drawChart({ config, language, weather, forecastItems } = this) {
       display: function (context) {
         return 'true';
       },
-      formatter: function (value, context) {
-        return '\u2066' + context.dataset.data[context.dataIndex] + '°\u2069';
+      formatter: (value, context) => {
+        return this.renderBidiMeasurement(context.dataset.data[context.dataIndex] + '°');
       },
       align: 'bottom',
       anchor: 'center',
@@ -1696,8 +1696,8 @@ drawChart({ config, language, weather, forecastItems } = this) {
             size: config.forecast.labels_font_size,
             lineHeight: 0.7,
           },
-          formatter: function (value, context) {
-            return '\u2066' + context.dataset.data[context.dataIndex] + '°\u2069';
+          formatter: (value, context) => {
+            return this.renderBidiMeasurement(context.dataset.data[context.dataIndex] + '°');
           },
         },
         tooltip: {
@@ -1725,7 +1725,7 @@ drawChart({ config, language, weather, forecastItems } = this) {
               
               return weekdayShort + ', ' + monthShort + ' ' + dayNumber + ', ' + timeStr;
             },
-    label: function (context) {
+    label: (context) => {
       var label = context.dataset.label;
       var value = context.formattedValue;
       var probability = data.forecast[context.dataIndex].precipitation_probability;
@@ -1740,9 +1740,9 @@ drawChart({ config, language, weather, forecastItems } = this) {
       }
 
       if (config.forecast.precipitation_type === 'rainfall' && context.datasetIndex === 2 && config.forecast.show_probability && probability !== undefined && probability !== null) {
-        return label + ': \u2066' + value + ' ' + precipUnit + ' / ' + Math.round(probability) + '%\u2069';
+        return label + ': ' + this.renderBidiMeasurement(value + ' ' + precipUnit + ' / ' + Math.round(probability) + '%');
       } else {
-        return label + ': \u2066' + value + ' ' + unit + '\u2069';
+        return label + ': ' + this.renderBidiMeasurement(value + ' ' + unit);
       }
             },
           },
@@ -2623,6 +2623,11 @@ renderLastUpdated() {
 
   showMoreInfo(entity) {
     this._fire('hass-more-info', { entityId: entity });
+  }
+
+  // Keep canvas measurements in LTR order even when an RTL tooltip is visible.
+  renderBidiMeasurement(text) {
+    return '\u2066' + text + '\u2069';
   }
 }
 
