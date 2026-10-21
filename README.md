@@ -535,6 +535,7 @@ The compiled file will be in `dist/weather-chart-card-ha.js`
 | French           | fr      |
 | German           | de      |
 | Greek            | el      |
+| Hebrew           | he      |
 | Hungarian        | hu      |
 | Italian          | it      |
 | Lithuanian       | lt      |
@@ -549,6 +550,11 @@ The compiled file will be in `dist/weather-chart-card-ha.js`
 | Ukrainian        | uk      |
 | 한국어           | ko      |
 | 繁體中文           | zh-Hant |
+
+Hebrew translations also support regional locales such as `he-IL`. The card follows
+Home Assistant's page direction for RTL layout, keeps numeric readings and the
+forecast timeline left-to-right, and uses locale-aware dates. See [RTL port notes](RTL_PORT.md) for compatibility
+adaptations and validation details.
 
 ---
 
@@ -571,7 +577,14 @@ npm start
 
 # Build for production
 npm run build
+
+# Run RTL/LTR browser regressions against the built bundle
+npx playwright install chromium
+npm run test:rtl
 ```
+
+On Windows, browser tests use Microsoft Edge by default. Set
+`PLAYWRIGHT_CHANNEL` to select another installed browser channel.
 
 ---
 
