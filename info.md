@@ -21,11 +21,9 @@ Perfect for dual-location weather monitoring or detailed single-location forecas
 ```yaml
 type: custom:weather-chart-card-ha
 entity: weather.your_weather_entity
-location_name: "Home"
 timezone: "America/Los_Angeles"
 forecast:
   show_date_labels: true
-  condition_icon_size_multiplier: 2.0
   use_color_thresholds: true
 ```
 

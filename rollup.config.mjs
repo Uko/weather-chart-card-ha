@@ -1,6 +1,7 @@
 import resolve from 'rollup-plugin-node-resolve';
 import serve from 'rollup-plugin-serve';
 import copy from 'rollup-plugin-copy';
+import cardVersion from './rollup.version.mjs';
 
 const dev = process.env.ROLLUP_WATCH;
 
@@ -24,6 +25,7 @@ export default {
   },
   plugins: [
     resolve(),
+    cardVersion(),
     dev && serve(serveopts),
     copy({
       targets: [
