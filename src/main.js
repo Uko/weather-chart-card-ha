@@ -1544,7 +1544,7 @@ drawChart({ config, language, weather, forecastItems } = this) {
         return 'true';
       },
       formatter: function (value, context) {
-        return context.dataset.data[context.dataIndex] + '°';
+        return '\u2066' + context.dataset.data[context.dataIndex] + '°\u2069';
       },
       align: 'top',
       anchor: 'center',
@@ -1564,7 +1564,7 @@ drawChart({ config, language, weather, forecastItems } = this) {
         return 'true';
       },
       formatter: function (value, context) {
-        return context.dataset.data[context.dataIndex] + '°';
+        return '\u2066' + context.dataset.data[context.dataIndex] + '°\u2069';
       },
       align: 'bottom',
       anchor: 'center',
@@ -1685,6 +1685,7 @@ drawChart({ config, language, weather, forecastItems } = this) {
           display: false,
         },
         datalabels: {
+          textAlign: 'left',
           backgroundColor: backgroundColor,
           borderColor: context => context.dataset.backgroundColor,
           borderRadius: 0,
@@ -1696,7 +1697,7 @@ drawChart({ config, language, weather, forecastItems } = this) {
             lineHeight: 0.7,
           },
           formatter: function (value, context) {
-            return context.dataset.data[context.dataIndex] + '°';
+            return '\u2066' + context.dataset.data[context.dataIndex] + '°\u2069';
           },
         },
         tooltip: {
