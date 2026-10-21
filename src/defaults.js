@@ -25,6 +25,7 @@ export const FORECAST_DEFAULTS = {
   show_date_labels: true,
   highlight_today: false,
   auto_rotate: 0,
+  auto_rotate_seconds: 0,
 };
 
 export const UNITS_DEFAULTS = {

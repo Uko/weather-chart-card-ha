@@ -207,6 +207,15 @@ class WeatherChartCardEditor extends LitElement {
     this.requestUpdate();
   }
 
+  _setForecastValue(key, value) {
+    const newConfig = JSON.parse(JSON.stringify(this._config));
+    newConfig.forecast = newConfig.forecast || {};
+    newConfig.forecast[key] = value;
+    this.configChanged(newConfig);
+    this._config = newConfig;
+    this.requestUpdate();
+  }
+
   _handlePrecipitationTypeChange(e) {
     const newValue = e.target.value;
     this.config.forecast.precipitation_type = newValue;
@@ -607,27 +616,32 @@ class WeatherChartCardEditor extends LitElement {
 
       <div class="input-container">
         <label class="switch-label">
-          Auto-rotate interval (minutes, 0 = off, 1-60)
+          Auto-rotate interval (0 min 0 s = off)
         </label>
         <input
           type="number"
+          aria-label="Auto-rotate minutes"
           min="0"
           max="60"
           step="1"
-          .value="${forecastConfig.auto_rotate || 0}"
+          .value="${String(this._value('forecast.auto_rotate'))}"
           @change="${(e) => {
             let val = parseInt(e.target.value, 10);
             if (isNaN(val) || val < 0) val = 0;
             if (val > 60) val = 60;
-            const newConfig = JSON.parse(JSON.stringify(this._config));
-            newConfig.forecast = newConfig.forecast || {};
-            newConfig.forecast.auto_rotate = val;
-            this.configChanged(newConfig);
-            this._config = newConfig;
-            this.requestUpdate();
+            e.target.value = String(val);
+            this._setForecastValue('auto_rotate', val);
           }}"
           style="width: 60px; margin-left: 8px;"
-        />
+        /> min
+        <select
+          aria-label="Auto-rotate seconds"
+          style="margin-left: 8px; padding: 4px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--card-background-color); color: var(--primary-text-color);"
+          .value="${String(this._value('forecast.auto_rotate_seconds'))}"
+          @change="${(e) => this._setForecastValue('auto_rotate_seconds', parseInt(e.target.value, 10))}"
+        >
+          ${[0, 5, 10, 15, 30].map((sec) => html`<option value="${sec}" ?selected=${sec === Number(this._value('forecast.auto_rotate_seconds'))}>${sec}</option>`)}
+        </select> s
       </div>
 
       <div class="radio-container group-spacing">

@@ -163,8 +163,13 @@ set hass(hass) {
   }
   this._themeKey = themeKey;
 
-  if (this.weather && !this.forecastSubscriber) {
-    this.subscribeForecastEvents();
+  if (this.weather) {
+    this.syncForecastSubscriptions();
+    // setConfig and connectedCallback can run before hass arrives, when the
+    // forecast entities' features are still unknown.
+    if (this.isConnected && this._canAutoRotate && !this.autoRotateTimeout) {
+      this.startAutoRotate();
+    }
   }
 }
 
@@ -185,26 +190,81 @@ readSensorState(hass, entityId, fallback) {
   return this.hasSensorState(hass, entityId) ? hass.states[entityId].state : fallback;
 }
 
-unsubscribeForecastEvents() {
-  if (this.forecastSubscriber) {
-    Promise.resolve(this.forecastSubscriber)
-      .then((unsub) => { if (typeof unsub === 'function') unsub(); })
-      .catch(() => {});
-    this.forecastSubscriber = null;
-  }
-  this._forecastSubscriptionKey = null;
+currentForecastType() {
+  return (this.config && this.config.forecast && this.config.forecast.type) || 'daily';
 }
 
-subscribeForecastEvents() {
-  const forecastType = this.config.forecast.type || 'daily';
-  const isHourly = forecastType === 'hourly';
-  const entityId = this.getForecastEntityId(forecastType);
+/**
+ * Forecast types that need a live subscription: the one on screen, plus the
+ * other one while auto-rotate is on. Keeping both open during rotation makes
+ * each switch instant and avoids a websocket re-subscribe every few seconds.
+ */
+neededForecastTypes() {
+  const current = this.currentForecastType();
+  if (!this._canAutoRotate) {
+    return [current];
+  }
+  return [current, current === 'daily' ? 'hourly' : 'daily'];
+}
 
-  if (!this.forecastEntitySupports(forecastType)) {
-    console.error(`Weather entity "${entityId}" does not support ${isHourly ? 'hourly' : 'daily'} forecasts.`);
+/**
+ * Open the subscriptions neededForecastTypes() asks for and close the rest,
+ * including any whose forecast entity changed in the config.
+ */
+syncForecastSubscriptions() {
+  if (!this._hass || !this._hass.connection) {
+    return;
+  }
+  this._forecastSubscriptions = this._forecastSubscriptions || {};
+  const needed = this.neededForecastTypes();
+  for (const type of Object.keys(this._forecastSubscriptions)) {
+    const subscription = this._forecastSubscriptions[type];
+    if (!needed.includes(type) || subscription.entityId !== this.getForecastEntityId(type)) {
+      this.unsubscribeForecastType(type);
+    }
+  }
+  for (const type of needed) {
+    if (!this._forecastSubscriptions[type]) {
+      this.subscribeForecastType(type);
+    }
+  }
+}
+
+unsubscribeForecastType(type) {
+  const subscription = this._forecastSubscriptions && this._forecastSubscriptions[type];
+  if (!subscription) {
+    return;
+  }
+  Promise.resolve(subscription.unsubscribe)
+    .then((unsub) => { if (typeof unsub === 'function') unsub(); })
+    .catch(() => {});
+  delete this._forecastSubscriptions[type];
+  // The cached payload stops updating once unsubscribed, so drop it.
+  if (this._forecastCache) {
+    delete this._forecastCache[type];
+  }
+}
+
+unsubscribeForecastEvents() {
+  for (const type of Object.keys(this._forecastSubscriptions || {})) {
+    this.unsubscribeForecastType(type);
+  }
+}
+
+subscribeForecastType(type) {
+  const entityId = this.getForecastEntityId(type);
+
+  if (!this.forecastEntitySupports(type)) {
+    // set hass retries on every state update; report the problem once.
+    const key = `${entityId}|${type}`;
+    if (this._unsupportedForecastKey !== key) {
+      this._unsupportedForecastKey = key;
+      console.error(`Weather entity "${entityId}" does not support ${type} forecasts.`);
+    }
     return;
   }
 
+  this._forecastCache = this._forecastCache || {};
   const callback = (event) => {
     const forecast = event.forecast || [];
     // Weather integrations frequently re-push an identical forecast on every
@@ -212,10 +272,15 @@ subscribeForecastEvents() {
     // fall behind the websocket stream — Home Assistant drops the connection
     // once its outbound queue reaches 4096 pending messages.
     const signature = JSON.stringify(forecast);
-    if (signature === this._lastForecastSignature) {
+    const subscription = this._forecastSubscriptions[type];
+    if (!subscription || signature === subscription.signature) {
       return;
     }
-    this._lastForecastSignature = signature;
+    subscription.signature = signature;
+    this._forecastCache[type] = forecast;
+    if (type !== this.currentForecastType()) {
+      return;
+    }
     this.forecasts = forecast;
     this.requestUpdate();
     // Update the existing chart in place when possible; a full destroy+rebuild
@@ -227,16 +292,16 @@ subscribeForecastEvents() {
     }
   };
 
-  // Fresh subscription: clear the dedupe cache so the first payload always renders,
-  // including right after a daily/hourly switch.
-  this._lastForecastSignature = null;
-
-  this.forecastSubscriber = this._hass.connection.subscribeMessage(callback, {
-    type: "weather/subscribe_forecast",
-    forecast_type: isHourly ? 'hourly' : 'daily',
-    entity_id: entityId,
-  });
-  this._forecastSubscriptionKey = `${entityId}|${forecastType}`;
+  // A fresh subscription has no signature, so its first payload always renders.
+  this._forecastSubscriptions[type] = {
+    entityId,
+    signature: null,
+    unsubscribe: this._hass.connection.subscribeMessage(callback, {
+      type: "weather/subscribe_forecast",
+      forecast_type: type,
+      entity_id: entityId,
+    }),
+  };
 }
 
 handleForecastTypeToggle() {
@@ -259,9 +324,13 @@ handleForecastTypeToggle() {
     }
   };
 
-  // Resubscribe to the new forecast type's entity
-  this.unsubscribeForecastEvents();
-  this.subscribeForecastEvents();
+  // Show the other type's forecast at once when its subscription is already
+  // open (auto-rotate keeps both); otherwise subscribe and wait for it.
+  const cached = this._forecastCache && this._forecastCache[newType];
+  if (cached) {
+    this.forecasts = cached;
+  }
+  this.syncForecastSubscriptions();
 
   // Request update to re-render
   this.requestUpdate();
@@ -311,9 +380,20 @@ handleForecastTypeToggle() {
     return (state.attributes.supported_features & feature) !== 0;
   }
 
+  /**
+   * Auto-rotate interval in milliseconds: `auto_rotate` minutes (0-60) plus
+   * `auto_rotate_seconds` (0, 5, 10, 15 or 30). 0 means off.
+   */
+  getAutoRotateMs() {
+    const forecast = (this.config && this.config.forecast) || {};
+    const minutes = Math.min(60, Math.max(0, parseInt(forecast.auto_rotate, 10) || 0));
+    const seconds = parseInt(forecast.auto_rotate_seconds, 10);
+    const validSeconds = WeatherChartCard.AUTO_ROTATE_SECONDS.includes(seconds) ? seconds : 0;
+    return (minutes * 60 + validSeconds) * 1000;
+  }
+
   get _canAutoRotate() {
-    const interval = this.config && this.config.forecast ? parseInt(this.config.forecast.auto_rotate, 10) : 0;
-    return interval > 0
+    return this.getAutoRotateMs() > 0
       && this.forecastEntitySupports('daily')
       && this.forecastEntitySupports('hourly');
   }
@@ -337,22 +417,28 @@ handleForecastTypeToggle() {
     this.startAutoRotate();
   }
 
-  startAutoRotate() {
+  /**
+   * Start (or restart) auto-rotate. Switches land on multiples of the interval
+   * since the epoch, so cards with the same interval switch together. After a
+   * manual click the boundaries are counted from the click instead, so the
+   * full interval runs from now. Each switch targets the next boundary rather
+   * than a fixed delay, so a late (throttled) timeout does not shift the rest.
+   */
+  startAutoRotate({ fromNow = false } = {}) {
     this.stopAutoRotate();
     if (this.config && this.config.show_forecast === false) return;
-    const interval = this.config && this.config.forecast ? parseInt(this.config.forecast.auto_rotate, 10) : 0;
-    if (!interval || interval < 1 || interval > 60) return;
-    // Only rotate if both a daily and an hourly forecast source are available
-    if (!this.forecastEntitySupports('daily') || !this.forecastEntitySupports('hourly')) return;
-    // Align to the next whole minute, then start the interval
-    const now = new Date();
-    const msUntilNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
-    this.autoRotateTimeout = setTimeout(() => {
-      this.handleForecastTypeToggle();
-      this.autoRotateInterval = setInterval(() => {
+    if (!this._canAutoRotate) return;
+    const interval = this.getAutoRotateMs();
+    const anchor = fromNow ? Date.now() : 0;
+    const nextBoundary = (after) => anchor + (Math.floor((after - anchor) / interval) + 1) * interval;
+    const schedule = (target) => {
+      this.autoRotateTimeout = setTimeout(() => {
         this.handleForecastTypeToggle();
-      }, interval * 60 * 1000);
-    }, msUntilNextMinute);
+        // max() keeps an early timeout from switching twice for one boundary.
+        schedule(nextBoundary(Math.max(Date.now(), target)));
+      }, Math.max(0, target - Date.now()));
+    };
+    schedule(nextBoundary(Date.now()));
   }
 
   stopAutoRotate() {
@@ -360,9 +446,14 @@ handleForecastTypeToggle() {
       clearTimeout(this.autoRotateTimeout);
       this.autoRotateTimeout = null;
     }
-    if (this.autoRotateInterval) {
-      clearInterval(this.autoRotateInterval);
-      this.autoRotateInterval = null;
+  }
+
+  // The daily/hourly button. With auto-rotate on it still switches, and the
+  // next automatic switch is a full interval after the click.
+  handleForecastToggleClick() {
+    this.handleForecastTypeToggle();
+    if (this._canAutoRotate) {
+      this.startAutoRotate({ fromNow: true });
     }
   }
 
@@ -1195,14 +1286,14 @@ async updated(changedProperties) {
   if (changedProperties.has('config')) {
     const oldConfig = changedProperties.get('config');
 
-    const forecastType = this.config.forecast.type || 'daily';
-    const resolvedKey = `${this.getForecastEntityId(forecastType)}|${forecastType}`;
-    const subscriptionChanged = oldConfig && resolvedKey !== this._forecastSubscriptionKey;
     const autoscrollChanged = oldConfig && this.config.autoscroll !== oldConfig.autoscroll;
 
-    if (subscriptionChanged) {
-      this.unsubscribeForecastEvents();
-      this.subscribeForecastEvents();
+    if (oldConfig) {
+      this.syncForecastSubscriptions();
+      const cached = this._forecastCache && this._forecastCache[this.currentForecastType()];
+      if (cached) {
+        this.forecasts = cached;
+      }
     }
 
     if (this.forecasts && this.forecasts.length) {
@@ -2166,9 +2257,14 @@ updateChart({ forecasts, forecastChart } = this) {
           direction: ltr;
           unicode-bidi: isolate;
         }
-        .forecast-toggle:disabled {
-          cursor: default;
-          opacity: 0.7;
+        .forecast-toggle {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .forecast-toggle .auto-rotate-icon {
+          --mdc-icon-size: 14px;
+          color: inherit;
         }
       </style>
 
@@ -2397,9 +2493,10 @@ renderClock({ config } = this) {
       ` : ''}
       ${showForecastToggle ? html`
         <button class="forecast-toggle"
-          @click="${this.handleForecastTypeToggle.bind(this)}"
-          ?disabled="${this._canAutoRotate}">
-          ${this._canAutoRotate ? `${this.ll('auto')} [${parseInt(config.forecast.auto_rotate, 10)}]` : (this.config.forecast.type === 'daily' ? this.ll('hourly') : this.ll('daily'))}
+          @click="${this.handleForecastToggleClick.bind(this)}"
+          title="${this._canAutoRotate ? this.ll('auto') : ''}">
+          ${this.config.forecast.type === 'daily' ? this.ll('hourly') : this.ll('daily')}
+          ${this._canAutoRotate ? html`<ha-icon class="auto-rotate-icon" icon="mdi:autorenew" aria-label="${this.ll('auto')}"></ha-icon>` : ''}
         </button>
       ` : ''}
     </div>
@@ -2816,6 +2913,9 @@ renderLastUpdated() {
 
 // Regex to detect Latin script characters for uppercase formatting (ES2019 compatible)
 WeatherChartCard.LATIN_SCRIPT_REGEX = /^\p{Script=Latin}+$/u;
+
+// Second steps offered for auto-rotate, on top of whole minutes.
+WeatherChartCard.AUTO_ROTATE_SECONDS = [0, 5, 10, 15, 30];
 
 export default WeatherChartCard;
 

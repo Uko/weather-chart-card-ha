@@ -24,9 +24,7 @@ test('#1 turning autoscroll on starts the timer, turning it off cancels it', asy
   card.autoscroll = () => calls.push('start');
   card.cancelAutoscroll = () => calls.push('cancel');
   card.drawChart = () => {};
-  card.subscribeForecastEvents = () => {};
-  card.unsubscribeForecastEvents = () => {};
-  card._forecastSubscriptionKey = 'weather.home|daily';
+  card.syncForecastSubscriptions = () => {};
   // updated() awaits updateComplete, which only settles once the card is connected.
   card.getUpdateComplete = async () => true;
 
@@ -155,6 +153,79 @@ test('#14 README option tables list the defaults the card uses', async () => {
   assert.ok(!readme.includes('location_name') && !readme.includes('condition_icon_size_multiplier'));
 });
 
+test('auto-rotate interval is minutes plus 0/5/10/15/30 seconds, 5 s to 60 min 30 s', () => {
+  const ms = (forecast) => makeCard({ forecast }).getAutoRotateMs();
+  assert.equal(ms({}), 0);
+  assert.equal(ms({ auto_rotate: 0, auto_rotate_seconds: 0 }), 0);
+  assert.equal(ms({ auto_rotate: 0, auto_rotate_seconds: 5 }), 5000);
+  assert.equal(ms({ auto_rotate: '2', auto_rotate_seconds: 30 }), 150000);
+  assert.equal(ms({ auto_rotate: 60, auto_rotate_seconds: 30 }), 3630000);
+  // Out of range minutes clamp; seconds outside the dropdown are ignored.
+  assert.equal(ms({ auto_rotate: 90, auto_rotate_seconds: 7 }), 3600000);
+});
+
+test('auto-rotate keeps both subscriptions, switches instantly, and a click restarts the timer', (t) => {
+  let now = 0;
+  t.mock.method(Date, 'now', () => now);
+  t.mock.timers.enable(['setTimeout']);
+  const tick = (ms) => {
+    now += ms;
+    t.mock.timers.tick(ms);
+  };
+  const subscribed = [];
+  const callbacks = {};
+  const supported = { state: 'sunny', attributes: { supported_features: 3 } };
+  const card = makeCard({ forecast: { auto_rotate: 0, auto_rotate_seconds: 10, type: 'daily' } }, {
+    states: { 'weather.home': supported },
+    connection: { subscribeMessage(callback, message) {
+      subscribed.push(message.forecast_type);
+      callbacks[message.forecast_type] = callback;
+      return Promise.resolve(() => {});
+    } },
+  });
+  card.drawChart = () => {};
+  card.updateChart = () => {};
+
+  card.syncForecastSubscriptions();
+  assert.deepEqual(subscribed.sort(), ['daily', 'hourly']);
+  const daily = [{ datetime: '2026-10-21T12:00:00Z', temperature: 20 }];
+  const hourly = [{ datetime: '2026-10-21T13:00:00Z', temperature: 18 }];
+  callbacks.daily({ forecast: daily });
+  callbacks.hourly({ forecast: hourly });
+  assert.equal(card.forecasts, daily);
+
+  card.startAutoRotate();
+  tick(10000);
+  assert.equal(card.config.forecast.type, 'hourly');
+  assert.equal(card.forecasts, hourly, 'switches to the cached payload at once');
+  assert.equal(subscribed.length, 2, 'no re-subscribe on a rotation');
+
+  // Click 4 s into the next interval: switch now, next auto switch 10 s later.
+  tick(4000);
+  card.handleForecastToggleClick();
+  assert.equal(card.config.forecast.type, 'daily');
+  tick(9999);
+  assert.equal(card.config.forecast.type, 'daily');
+  tick(1);
+  assert.equal(card.config.forecast.type, 'hourly');
+  card.stopAutoRotate();
+});
+
+test('without auto-rotate only the forecast on screen stays subscribed', () => {
+  const subscribed = [];
+  const card = makeCard({ forecast: { type: 'daily' } }, {
+    states: { 'weather.home': { state: 'sunny', attributes: { supported_features: 3 } } },
+    connection: { subscribeMessage(callback, message) {
+      subscribed.push(message.forecast_type);
+      return Promise.resolve(() => {});
+    } },
+  });
+  card.syncForecastSubscriptions();
+  card.handleForecastTypeToggle();
+  assert.deepEqual(subscribed, ['daily', 'hourly']);
+  assert.deepEqual(Object.keys(card._forecastSubscriptions), ['hourly']);
+});
+
 test('a single-point temperature gradient has a valid stop offset', () => {
   const card = makeCard();
   const stops = [];
@@ -169,4 +240,62 @@ test('a single-point temperature gradient has a valid stop offset', () => {
   stops.length = 0;
   card.createTemperatureGradient([12, 15, 18], '°C', ctx, area);
   assert.deepEqual(stops.map(([offset]) => offset), [0, 0.5, 1]);
+});
+
+test('auto-rotate targets the next boundary, so a late timeout does not drift', (t) => {
+  // Hand-driven clock and timers, so a timeout can be delivered late.
+  let now = 0;
+  let pending = null;
+  t.mock.method(Date, 'now', () => now);
+  t.mock.method(globalThis, 'setTimeout', (callback, delay) => (pending = { callback, at: now + delay }));
+  t.mock.method(globalThis, 'clearTimeout', () => { pending = null; });
+  const fire = (at) => { now = at; const { callback } = pending; pending = null; callback(); };
+
+  const card = makeCard({ forecast: { auto_rotate: 0, auto_rotate_seconds: 10 } }, {
+    states: { 'weather.home': { state: 'sunny', attributes: { supported_features: 3 } } },
+  });
+  card.handleForecastTypeToggle = () => {};
+  card.startAutoRotate();
+  assert.equal(pending.at, 10000);
+  fire(25000); // throttled: 15 s late
+  assert.equal(pending.at, 30000, 'back on the shared boundary, not 35 s');
+  fire(29999); // early by 1 ms: must not switch again for the same boundary
+  assert.equal(pending.at, 40000);
+
+  // A click 4 s after a boundary: full interval from the click, then that cadence.
+  now = 44000;
+  card.startAutoRotate({ fromNow: true });
+  assert.equal(pending.at, 54000);
+  fire(61000);
+  assert.equal(pending.at, 64000);
+  card.stopAutoRotate();
+});
+
+test('config changes select the cached forecast before redrawing', async () => {
+  const callbacks = {};
+  const supported = { state: 'sunny', attributes: { supported_features: 3 } };
+  const card = makeCard({ forecast: { auto_rotate: 1, type: 'daily' } }, {
+    states: { 'weather.home': supported },
+    connection: { subscribeMessage(callback, message) {
+      callbacks[message.forecast_type] = callback;
+      return Promise.resolve(() => {});
+    } },
+  });
+  const drawnForecasts = [];
+  card.drawChart = () => drawnForecasts.push(card.forecasts);
+  card.getUpdateComplete = async () => true;
+  card.syncForecastSubscriptions();
+
+  const daily = [{ datetime: '2026-10-21T12:00:00Z', temperature: 20 }];
+  const hourly = [{ datetime: '2026-10-21T13:00:00Z', temperature: 18 }];
+  callbacks.daily({ forecast: daily });
+  callbacks.hourly({ forecast: hourly });
+
+  const oldConfig = card.config;
+  card.config = { ...oldConfig, forecast: { ...oldConfig.forecast, type: 'hourly', auto_rotate: 0 } };
+  await card.updated(new Map([['config', oldConfig]]));
+
+  assert.equal(card.forecasts, hourly);
+  assert.equal(drawnForecasts.at(-1), hourly);
+  assert.deepEqual(Object.keys(card._forecastSubscriptions), ['hourly']);
 });

@@ -203,7 +203,8 @@ units:
 | round_temp                     | boolean | false                    | Option for rounding the forecast temperatures                                                      |
 | style                          | string  | style2                   | Change chart style, options: 'style1' or 'style2'                                                  |
 | type                           | string  | daily                    | Show daily or hourly forecast if available, options: 'daily' or 'hourly'                           |
-| auto_rotate                    | number  | 0                        | Switch between daily and hourly every N minutes (1-60, 0 = off). Needs both forecast types.        |
+| auto_rotate                    | number  | 0                        | Auto-rotate minutes (0-60), added to `auto_rotate_seconds`. Needs both forecast types.             |
+| auto_rotate_seconds            | number  | 0                        | Auto-rotate seconds: 0, 5, 10, 15 or 30. Both at 0 = off; 5 s to 60 min 30 s. The button keeps working and restarts the timer. |
 | daily_entity                   | string  | (main entity)            | Optional `weather.*` entity to source the **daily** forecast from. Falls back to the main `entity`. |
 | hourly_entity                  | string  | (main entity)            | Optional `weather.*` entity to source the **hourly** forecast from. Falls back to the main `entity`.|
 | number_of_forecasts            | number  | 0                        | Overrides the number of forecasts to display. Set to "0" for automatic mode.                       |
