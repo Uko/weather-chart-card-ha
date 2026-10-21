@@ -650,7 +650,7 @@ getLocalizedDayName(date, timezone) {
   try {
     const selectedLocale = this.config.locale || this.language || 'en';
     const dayFormatter = new Intl.DateTimeFormat(selectedLocale, {
-      weekday: 'short',
+      weekday: document.dir === 'rtl' ? 'long' : 'short',
       timeZone: timezone
     });
     const formatted = dayFormatter.format(date);
@@ -664,7 +664,7 @@ getLocalizedDayName(date, timezone) {
   // Priority 2: Try full day translation array from locale.js
   const days = this.getLocaleArray('days');
   if (days && days[dayIndex] && typeof days[dayIndex] === 'string' && days[dayIndex].length > 0) {
-    const dayName = days[dayIndex].substring(0, 3);
+    const dayName = document.dir === 'rtl' ? days[dayIndex] : days[dayIndex].substring(0, 3);
     return this.formatLocalizedShortDateLabel(dayName, this.config.locale || this.language || 'en');
   }
   
@@ -1518,6 +1518,13 @@ drawChart({ config, language, weather, forecastItems } = this) {
 
         formattedValue = formattedValue.replace('\n', '\n\n');
 
+        // Canvas labels need explicit bidi context because the chart stays LTR.
+        if (document.dir === 'rtl') {
+          formattedValue = formattedValue.split('\n')
+            .map((line) => line ? `\u202B${line}\u202C` : line)
+            .join('\n');
+        }
+
         return formattedValue;
       },
         textAlign: 'center',
@@ -1693,6 +1700,8 @@ drawChart({ config, language, weather, forecastItems } = this) {
           },
         },
         tooltip: {
+          rtl: document.dir === 'rtl',
+          textDirection: document.dir === 'rtl' ? 'rtl' : 'ltr',
           caretSize: 0,
           caretPadding: 15,
           callbacks: {
@@ -1730,9 +1739,9 @@ drawChart({ config, language, weather, forecastItems } = this) {
       }
 
       if (config.forecast.precipitation_type === 'rainfall' && context.datasetIndex === 2 && config.forecast.show_probability && probability !== undefined && probability !== null) {
-        return label + ': ' + value + ' ' + precipUnit + ' / ' + Math.round(probability) + '%';
+        return label + ': \u2066' + value + ' ' + precipUnit + ' / ' + Math.round(probability) + '%\u2069';
       } else {
-        return label + ': ' + value + ' ' + unit;
+        return label + ': \u2066' + value + ' ' + unit + '\u2069';
       }
             },
           },
@@ -1904,6 +1913,8 @@ updateChart({ forecasts, forecastChart } = this) {
         .main .current-temp {
           font-size: ${config.current_temp_size}px;
           font-weight: 300;
+          direction: ltr;
+          unicode-bidi: isolate;
         }
         .main .current-condition {
           font-size: 18px;
@@ -1924,6 +1935,7 @@ updateChart({ forecasts, forecastChart } = this) {
         .date-text {
           font-size: ${config.day_date_size}px;
           color: var(--secondary-text-color);
+          direction: var(--direction, inherit);
         }
         .main span {
           font-size: 18px;
@@ -1935,7 +1947,6 @@ updateChart({ forecasts, forecastChart } = this) {
           align-items: center;
           margin-bottom: 6px;
       	  font-weight: 300;
-          direction: ltr;
         }
         .chart-container {
           position: relative;
@@ -2025,6 +2036,16 @@ updateChart({ forecasts, forecastChart } = this) {
         }
         .forecast-toggle:hover {
           opacity: 1;
+        }
+        .attributes .water-percent,
+        .attributes .pressure,
+        .attributes .dew-point,
+        .attributes .visibility,
+        .attributes .uv-index,
+        .attributes .wind-speed-attribute,
+        .attributes .wind-gust-speed {
+          direction: ltr;
+          unicode-bidi: isolate;
         }
         .forecast-toggle:disabled {
           cursor: default;
@@ -2340,16 +2361,16 @@ return html`
       ${((showHumidity && humidity !== undefined) || (showPressure && dPressure !== undefined) || (showDewpoint && dew_point !== undefined) || (showVisibility && dVisibility !== undefined)) ? html`
         <div>
           ${showHumidity && humidity !== undefined ? html`
-            <ha-icon icon="hass:water-percent"></ha-icon> ${humidity} %<br>
+            <ha-icon icon="hass:water-percent"></ha-icon> <span class="water-percent">${humidity} %</span><br>
           ` : ''}
           ${showPressure && dPressure !== undefined ? html`
-            <ha-icon icon="hass:gauge"></ha-icon> ${dPressure} ${this.ll('units')[this.unitPressure]} <br>
+            <ha-icon icon="hass:gauge"></ha-icon> <span class="pressure">${dPressure} ${this.ll('units')[this.unitPressure]}</span> <br>
           ` : ''}
           ${showDewpoint && dew_point !== undefined ? html`
-            <ha-icon icon="hass:thermometer-water"></ha-icon> ${dDewPoint} ${dewPointDisplayUnit} <br>
+            <ha-icon icon="hass:thermometer-water"></ha-icon> <span class="dew-point">${dDewPoint} ${dewPointDisplayUnit}</span> <br>
           ` : ''}
           ${showVisibility && dVisibility !== undefined ? html`
-            <ha-icon icon="hass:eye"></ha-icon> ${dVisibility} ${visibilityDisplayUnit}
+            <ha-icon icon="hass:eye"></ha-icon> <span class="visibility">${dVisibility} ${visibilityDisplayUnit}</span>
           ` : ''}
         </div>
       ` : ''}
@@ -2357,7 +2378,7 @@ return html`
         <div>
           ${showUv && uv_index !== undefined ? html`
             <div>
-              <ha-icon icon="hass:white-balance-sunny"></ha-icon> UV: ${Math.round(uv_index * 10) / 10}
+              <ha-icon icon="hass:white-balance-sunny"></ha-icon> <span class="uv-index">UV: ${Math.round(uv_index * 10) / 10}</span>
             </div>
           ` : ''}
           ${showSun && sun !== undefined ? html`
@@ -2370,15 +2391,15 @@ return html`
       ${((showWindDirection && windDirection !== undefined) || (showWindSpeed && dWindSpeed !== undefined)) ? html`
         <div>
           ${showWindDirection && windDirection !== undefined && windDirection !== null ? html`
-            ${this.getWindDirIcon(windDirection) ? html`<ha-icon icon="hass:${this.getWindDirIcon(windDirection)}"></ha-icon> ` : ''}${this.getWindDir(windDirection)} <br>
+            ${this.getWindDirIcon(windDirection) ? html`<ha-icon icon="hass:${this.getWindDirIcon(windDirection)}"></ha-icon> ` : ''}<span class="wind-direction">${this.getWindDir(windDirection)}</span> <br>
           ` : ''}
           ${showWindSpeed && dWindSpeed !== undefined ? html`
             <ha-icon icon="hass:weather-windy"></ha-icon>
-            ${dWindSpeed} ${this.ll('units')[this.unitSpeed] || this.unitSpeed} <br>
+            <span class="wind-speed-attribute">${dWindSpeed} ${this.ll('units')[this.unitSpeed] || this.unitSpeed}</span> <br>
           ` : ''}
           ${showWindgustspeed && wind_gust_speed !== undefined ? html`
             <ha-icon icon="hass:weather-windy-variant"></ha-icon>
-            ${dWindGustSpeed} ${this.ll('units')[this.unitSpeed] || this.unitSpeed}
+            <span class="wind-gust-speed">${dWindGustSpeed} ${this.ll('units')[this.unitSpeed] || this.unitSpeed}</span>
           ` : ''}
         </div>
       ` : ''}

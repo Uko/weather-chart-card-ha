@@ -41,6 +41,12 @@ jobs:
       - name: Build
         run: npm run build
       
+      - name: Install test browser
+        run: npx playwright install --with-deps chromium
+
+      - name: RTL and LTR browser regressions
+        run: npm run test:rtl
+
       - name: Verify build output
         run: |
           if [ ! -f "dist/weather-chart-card-ha.js" ]; then
