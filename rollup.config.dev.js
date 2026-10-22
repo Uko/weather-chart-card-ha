@@ -1,6 +1,7 @@
 import resolve from 'rollup-plugin-node-resolve';
 import serve from 'rollup-plugin-serve';
 import copy from 'rollup-plugin-copy';
+import cardVersion from './rollup.version.mjs';
 
 export default {
   input: 'src/main.js',
@@ -11,6 +12,7 @@ export default {
   },
   plugins: [
     resolve(),
+    cardVersion(),
     copy({
       targets: [
         { src: 'src/icons/*', dest: 'dist/icons' },

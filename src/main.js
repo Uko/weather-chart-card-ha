@@ -6,12 +6,15 @@ import {
   weatherIconsNight,
   WeatherEntityFeature
 } from './const.js';
+import { DEFAULTS, FORECAST_DEFAULTS, UNITS_DEFAULTS } from './defaults.js';
 import {LitElement, html} from 'lit';
 import './weather-chart-card-editor.js';
-import { property } from 'lit/decorators.js';
 import {Chart, registerables} from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 Chart.register(...registerables, ChartDataLabels);
+
+// Injected by the rollup build from package.json; 'dev' when run unbundled (tests).
+const CARD_VERSION = typeof __CARD_VERSION__ !== 'undefined' ? __CARD_VERSION__ : 'dev';
 
 class WeatherChartCard extends LitElement {
 
@@ -26,55 +29,9 @@ static getStubConfig(hass, unusedEntities, allEntities) {
   }
   return {
     entity,
-    title: 'Enhanced Weather Chart Card',
-    show_main: true,
-    show_forecast: true,
-    show_temperature: true,
-    show_current_condition: true,
-    show_attributes: true,
-    show_time: true,
-    show_time_seconds: true,
-    show_hour_leading_zero: true,
-    show_day: true,
-    show_date: true,
-    show_humidity: true,
-    show_pressure: true,
-    show_uv: true,
-    show_wind_direction: true,
-    show_wind_speed: true,
-    show_sun: true,
-    show_feels_like: false,
-    timezone: '',
-    show_dew_point: false,
-    show_wind_gust_speed: false,
-    show_visibility: false,
-    show_last_changed: false,
-    show_forecast_toggle: false,
-    use_12hour_format: false,
-    icons_size: 30,
-    main_icon_size: 150,
-    current_temp_size: 35,
-    animated_icons: true,
-    icon_style: 'style1',
-    autoscroll: false,
-    forecast: {
-      precipitation_type: 'rainfall',
-      show_probability: false,
-      show_precipitation_labels: true,
-      labels_font_size: '11',
-      precip_bar_size: '100',
-      style: 'style2',
-      show_wind_forecast: true,
-      condition_icons: true,
-      round_temp: false,
-      type: 'daily',
-      number_of_forecasts: '0', 
-      disable_animation: false,
-      show_date_labels: true,
-      use_color_thresholds: true,
-      gradient_mode: 'classic',
-      gradient_preset: 'temperate',
-    },
+    ...DEFAULTS,
+    forecast: { ...FORECAST_DEFAULTS },
+    units: { ...UNITS_DEFAULTS },
   };
 }
 
@@ -98,49 +55,14 @@ static getStubConfig(hass, unusedEntities, allEntities) {
 
 setConfig(config) {
   const cardConfig = {
-    title: 'Weather',
-    icons_size: 30,
-    animated_icons: true,
-    icon_style: 'style1',
-    current_temp_size: 35,
-    main_icon_size: 150,
-    time_size: 26,
-    day_date_size: 15,
-    show_feels_like: false,
-    show_dew_point: false,
-    show_wind_gust_speed: false,
-    show_visibility: false,
-    show_last_changed: false,
-    show_description: false,
-    show_forecast_toggle: false,
-    show_hour_leading_zero: true,
+    ...DEFAULTS,
     ...config,
     forecast: {
-      precipitation_type: 'rainfall',
-      show_probability: false,
-      show_precipitation_labels: true,
-      labels_font_size: 11,
-      chart_height: 180,
-      precip_bar_size: 100,
-      style: 'style2',
-      temperature1_color: 'rgba(255, 152, 0, 1.0)',
-      temperature2_color: 'rgba(68, 115, 158, 1.0)',
-      precipitation_color: 'rgba(132, 209, 253, 1.0)',
-      condition_icons: true,
-      show_wind_forecast: true,
-      round_temp: false,
-      type: 'daily',
-      auto_rotate: 0,
-      number_of_forecasts: '0',
-      '12hourformat': false,
-      show_date_labels: true,
-      use_color_thresholds: true,
-      gradient_mode: 'classic',
-      gradient_preset: 'temperate',
+      ...FORECAST_DEFAULTS,
       ...config.forecast,
     },
     units: {
-      pressure: 'hPa',
+      ...UNITS_DEFAULTS,
       ...config.units,
     }
   };
@@ -195,65 +117,154 @@ set hass(hass) {
   this._hass = hass;
   this.language = this.config.locale || hass.selectedLanguage || hass.language;
   this.sun = 'sun.sun' in hass.states ? hass.states['sun.sun'] : null;
+  // The weather entity must be assigned before the units are derived from it,
+  // or the first update has no unit for wind, visibility and temperature.
+  this.weather = this.config.entity in hass.states
+    ? hass.states[this.config.entity]
+    : null;
   this.unitSpeed = this.config.units.speed ? this.config.units.speed : this.weather && this.weather.attributes.wind_speed_unit;
   this.unitPressure = this.config.units.pressure ? this.config.units.pressure : this.weather && this.weather.attributes.pressure_unit;
   this.unitVisibility = this.config.units.visibility ? this.config.units.visibility : this.weather && this.weather.attributes.visibility_unit;
   this.unitTemperature = this.config.units.temperature ? this.config.units.temperature : this.weather && this.weather.attributes.temperature_unit;
-  this.weather = this.config.entity in hass.states
-    ? hass.states[this.config.entity]
-    : null;
 
   if (this.weather) {
-    this.temperature = this.config.temp ? hass.states[this.config.temp].state : this.weather.attributes.temperature;
-    this.humidity = this.config.humid ? hass.states[this.config.humid].state : this.weather.attributes.humidity;
-    this.pressure = this.config.press ? hass.states[this.config.press].state : this.weather.attributes.pressure;
-    this.uv_index = this.config.uv ? hass.states[this.config.uv].state : this.weather.attributes.uv_index;
-    this.windSpeed = this.config.windspeed ? hass.states[this.config.windspeed].state : this.weather.attributes.wind_speed;
-    this.dew_point = this.config.dew_point ? hass.states[this.config.dew_point].state : this.weather.attributes.dew_point;
-    this.wind_gust_speed = this.config.wind_gust_speed ? hass.states[this.config.wind_gust_speed].state : this.weather.attributes.wind_gust_speed;
-    if (this.config.visibility && hass.states[this.config.visibility]) {
+    const attributes = this.weather.attributes;
+    this.temperature = this.readSensorState(hass, this.config.temp, attributes.temperature);
+    this.humidity = this.readSensorState(hass, this.config.humid, attributes.humidity);
+    this.pressure = this.readSensorState(hass, this.config.press, attributes.pressure);
+    this.uv_index = this.readSensorState(hass, this.config.uv, attributes.uv_index);
+    this.windSpeed = this.readSensorState(hass, this.config.windspeed, attributes.wind_speed);
+    this.dew_point = this.readSensorState(hass, this.config.dew_point, attributes.dew_point);
+    this.wind_gust_speed = this.readSensorState(hass, this.config.wind_gust_speed, attributes.wind_gust_speed);
+    if (this.hasSensorState(hass, this.config.visibility)) {
       this.visibility = hass.states[this.config.visibility].state;
-      this.visibilitySourceUnit = hass.states[this.config.visibility].attributes.unit_of_measurement || this.weather.attributes.visibility_unit;
+      this.visibilitySourceUnit = hass.states[this.config.visibility].attributes.unit_of_measurement || attributes.visibility_unit;
     } else {
-      this.visibility = this.weather.attributes.visibility;
-      this.visibilitySourceUnit = this.weather.attributes.visibility_unit;
+      this.visibility = attributes.visibility;
+      this.visibilitySourceUnit = attributes.visibility_unit;
     }
 
-    if (this.config.winddir && hass.states[this.config.winddir] && hass.states[this.config.winddir].state !== undefined) {
+    if (this.hasSensorState(hass, this.config.winddir)) {
       this.windDirection = parseFloat(hass.states[this.config.winddir].state);
     } else {
-      this.windDirection = this.weather.attributes.wind_bearing;
+      this.windDirection = attributes.wind_bearing;
     }
 
-    this.feels_like = this.config.feels_like && hass.states[this.config.feels_like] ? hass.states[this.config.feels_like].state : this.weather.attributes.apparent_temperature;
-    this.description = this.config.description && hass.states[this.config.description] ? hass.states[this.config.description].state : this.weather.attributes.description;
+    this.feels_like = this.readSensorState(hass, this.config.feels_like, attributes.apparent_temperature);
+    this.description = this.readSensorState(hass, this.config.description, attributes.description);
   }
 
-  if (this.weather && !this.forecastSubscriber) {
-    this.subscribeForecastEvents();
+  // A theme switch changes the CSS variables the chart reads its colors from.
+  // Redraw once the new theme has been applied to the page.
+  const themes = hass.themes || {};
+  const themeKey = `${themes.theme}|${themes.darkMode}`;
+  if (this._themeKey !== undefined && themeKey !== this._themeKey && this.forecastChart) {
+    requestAnimationFrame(() => this.drawChart());
+  }
+  this._themeKey = themeKey;
+
+  if (this.weather) {
+    this.syncForecastSubscriptions();
+    // setConfig and connectedCallback can run before hass arrives, when the
+    // forecast entities' features are still unknown.
+    if (this.isConnected && this._canAutoRotate && !this.autoRotateTimeout) {
+      this.startAutoRotate();
+    }
+  }
+}
+
+/**
+ * True when an alternative sensor is configured, exists and reports a usable
+ * state. A renamed, removed or unavailable sensor falls back to the weather
+ * entity instead of breaking the card.
+ */
+hasSensorState(hass, entityId) {
+  const stateObj = entityId ? hass.states[entityId] : null;
+  return Boolean(stateObj)
+    && stateObj.state !== undefined
+    && stateObj.state !== 'unavailable'
+    && stateObj.state !== 'unknown';
+}
+
+readSensorState(hass, entityId, fallback) {
+  return this.hasSensorState(hass, entityId) ? hass.states[entityId].state : fallback;
+}
+
+currentForecastType() {
+  return (this.config && this.config.forecast && this.config.forecast.type) || 'daily';
+}
+
+/**
+ * Forecast types that need a live subscription: the one on screen, plus the
+ * other one while auto-rotate is on. Keeping both open during rotation makes
+ * each switch instant and avoids a websocket re-subscribe every few seconds.
+ */
+neededForecastTypes() {
+  const current = this.currentForecastType();
+  if (!this._canAutoRotate) {
+    return [current];
+  }
+  return [current, current === 'daily' ? 'hourly' : 'daily'];
+}
+
+/**
+ * Open the subscriptions neededForecastTypes() asks for and close the rest,
+ * including any whose forecast entity changed in the config.
+ */
+syncForecastSubscriptions() {
+  if (!this._hass || !this._hass.connection) {
+    return;
+  }
+  this._forecastSubscriptions = this._forecastSubscriptions || {};
+  const needed = this.neededForecastTypes();
+  for (const type of Object.keys(this._forecastSubscriptions)) {
+    const subscription = this._forecastSubscriptions[type];
+    if (!needed.includes(type) || subscription.entityId !== this.getForecastEntityId(type)) {
+      this.unsubscribeForecastType(type);
+    }
+  }
+  for (const type of needed) {
+    if (!this._forecastSubscriptions[type]) {
+      this.subscribeForecastType(type);
+    }
+  }
+}
+
+unsubscribeForecastType(type) {
+  const subscription = this._forecastSubscriptions && this._forecastSubscriptions[type];
+  if (!subscription) {
+    return;
+  }
+  Promise.resolve(subscription.unsubscribe)
+    .then((unsub) => { if (typeof unsub === 'function') unsub(); })
+    .catch(() => {});
+  delete this._forecastSubscriptions[type];
+  // The cached payload stops updating once unsubscribed, so drop it.
+  if (this._forecastCache) {
+    delete this._forecastCache[type];
   }
 }
 
 unsubscribeForecastEvents() {
-  if (this.forecastSubscriber) {
-    Promise.resolve(this.forecastSubscriber)
-      .then((unsub) => { if (typeof unsub === 'function') unsub(); })
-      .catch(() => {});
-    this.forecastSubscriber = null;
+  for (const type of Object.keys(this._forecastSubscriptions || {})) {
+    this.unsubscribeForecastType(type);
   }
-  this._forecastSubscriptionKey = null;
 }
 
-subscribeForecastEvents() {
-  const forecastType = this.config.forecast.type || 'daily';
-  const isHourly = forecastType === 'hourly';
-  const entityId = this.getForecastEntityId(forecastType);
+subscribeForecastType(type) {
+  const entityId = this.getForecastEntityId(type);
 
-  if (!this.forecastEntitySupports(forecastType)) {
-    console.error(`Weather entity "${entityId}" does not support ${isHourly ? 'hourly' : 'daily'} forecasts.`);
+  if (!this.forecastEntitySupports(type)) {
+    // set hass retries on every state update; report the problem once.
+    const key = `${entityId}|${type}`;
+    if (this._unsupportedForecastKey !== key) {
+      this._unsupportedForecastKey = key;
+      console.error(`Weather entity "${entityId}" does not support ${type} forecasts.`);
+    }
     return;
   }
 
+  this._forecastCache = this._forecastCache || {};
   const callback = (event) => {
     const forecast = event.forecast || [];
     // Weather integrations frequently re-push an identical forecast on every
@@ -261,10 +272,15 @@ subscribeForecastEvents() {
     // fall behind the websocket stream — Home Assistant drops the connection
     // once its outbound queue reaches 4096 pending messages.
     const signature = JSON.stringify(forecast);
-    if (signature === this._lastForecastSignature) {
+    const subscription = this._forecastSubscriptions[type];
+    if (!subscription || signature === subscription.signature) {
       return;
     }
-    this._lastForecastSignature = signature;
+    subscription.signature = signature;
+    this._forecastCache[type] = forecast;
+    if (type !== this.currentForecastType()) {
+      return;
+    }
     this.forecasts = forecast;
     this.requestUpdate();
     // Update the existing chart in place when possible; a full destroy+rebuild
@@ -276,16 +292,16 @@ subscribeForecastEvents() {
     }
   };
 
-  // Fresh subscription: clear the dedupe cache so the first payload always renders,
-  // including right after a daily/hourly switch.
-  this._lastForecastSignature = null;
-
-  this.forecastSubscriber = this._hass.connection.subscribeMessage(callback, {
-    type: "weather/subscribe_forecast",
-    forecast_type: isHourly ? 'hourly' : 'daily',
-    entity_id: entityId,
-  });
-  this._forecastSubscriptionKey = `${entityId}|${forecastType}`;
+  // A fresh subscription has no signature, so its first payload always renders.
+  this._forecastSubscriptions[type] = {
+    entityId,
+    signature: null,
+    unsubscribe: this._hass.connection.subscribeMessage(callback, {
+      type: "weather/subscribe_forecast",
+      forecast_type: type,
+      entity_id: entityId,
+    }),
+  };
 }
 
 handleForecastTypeToggle() {
@@ -308,9 +324,13 @@ handleForecastTypeToggle() {
     }
   };
 
-  // Resubscribe to the new forecast type's entity
-  this.unsubscribeForecastEvents();
-  this.subscribeForecastEvents();
+  // Show the other type's forecast at once when its subscription is already
+  // open (auto-rotate keeps both); otherwise subscribe and wait for it.
+  const cached = this._forecastCache && this._forecastCache[newType];
+  if (cached) {
+    this.forecasts = cached;
+  }
+  this.syncForecastSubscriptions();
 
   // Request update to re-render
   this.requestUpdate();
@@ -360,9 +380,20 @@ handleForecastTypeToggle() {
     return (state.attributes.supported_features & feature) !== 0;
   }
 
+  /**
+   * Auto-rotate interval in milliseconds: `auto_rotate` minutes (0-60) plus
+   * `auto_rotate_seconds` (0, 5, 10, 15 or 30). 0 means off.
+   */
+  getAutoRotateMs() {
+    const forecast = (this.config && this.config.forecast) || {};
+    const minutes = Math.min(60, Math.max(0, parseInt(forecast.auto_rotate, 10) || 0));
+    const seconds = parseInt(forecast.auto_rotate_seconds, 10);
+    const validSeconds = WeatherChartCard.AUTO_ROTATE_SECONDS.includes(seconds) ? seconds : 0;
+    return (minutes * 60 + validSeconds) * 1000;
+  }
+
   get _canAutoRotate() {
-    const interval = this.config && this.config.forecast ? parseInt(this.config.forecast.auto_rotate, 10) : 0;
-    return interval > 0
+    return this.getAutoRotateMs() > 0
       && this.forecastEntitySupports('daily')
       && this.forecastEntitySupports('hourly');
   }
@@ -378,25 +409,36 @@ handleForecastTypeToggle() {
     if (!this.resizeInitialized) {
       this.delayedAttachResizeObserver();
     }
+    // firstUpdated starts autoscroll on the first connect; later reconnects
+    // (view changes) restart the timer that disconnectedCallback cancelled.
+    if (this.hasUpdated && this.config && this.config.autoscroll) {
+      this.autoscroll();
+    }
     this.startAutoRotate();
   }
 
-  startAutoRotate() {
+  /**
+   * Start (or restart) auto-rotate. Switches land on multiples of the interval
+   * since the epoch, so cards with the same interval switch together. After a
+   * manual click the boundaries are counted from the click instead, so the
+   * full interval runs from now. Each switch targets the next boundary rather
+   * than a fixed delay, so a late (throttled) timeout does not shift the rest.
+   */
+  startAutoRotate({ fromNow = false } = {}) {
     this.stopAutoRotate();
     if (this.config && this.config.show_forecast === false) return;
-    const interval = this.config && this.config.forecast ? parseInt(this.config.forecast.auto_rotate, 10) : 0;
-    if (!interval || interval < 1 || interval > 60) return;
-    // Only rotate if both a daily and an hourly forecast source are available
-    if (!this.forecastEntitySupports('daily') || !this.forecastEntitySupports('hourly')) return;
-    // Align to the next whole minute, then start the interval
-    const now = new Date();
-    const msUntilNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
-    this.autoRotateTimeout = setTimeout(() => {
-      this.handleForecastTypeToggle();
-      this.autoRotateInterval = setInterval(() => {
+    if (!this._canAutoRotate) return;
+    const interval = this.getAutoRotateMs();
+    const anchor = fromNow ? Date.now() : 0;
+    const nextBoundary = (after) => anchor + (Math.floor((after - anchor) / interval) + 1) * interval;
+    const schedule = (target) => {
+      this.autoRotateTimeout = setTimeout(() => {
         this.handleForecastTypeToggle();
-      }, interval * 60 * 1000);
-    }, msUntilNextMinute);
+        // max() keeps an early timeout from switching twice for one boundary.
+        schedule(nextBoundary(Math.max(Date.now(), target)));
+      }, Math.max(0, target - Date.now()));
+    };
+    schedule(nextBoundary(Date.now()));
   }
 
   stopAutoRotate() {
@@ -404,9 +446,14 @@ handleForecastTypeToggle() {
       clearTimeout(this.autoRotateTimeout);
       this.autoRotateTimeout = null;
     }
-    if (this.autoRotateInterval) {
-      clearInterval(this.autoRotateInterval);
-      this.autoRotateInterval = null;
+  }
+
+  // The daily/hourly button. With auto-rotate on it still switches, and the
+  // next automatic switch is a full interval after the click.
+  handleForecastToggleClick() {
+    this.handleForecastTypeToggle();
+    if (this._canAutoRotate) {
+      this.startAutoRotate({ fromNow: true });
     }
   }
 
@@ -420,6 +467,9 @@ handleForecastTypeToggle() {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.detachResizeObserver();
+    // Reattach on the next connect: HA disconnects cards on every view change.
+    this.resizeInitialized = false;
+    this.cancelAutoscroll();
     this.stopAutoRotate();
     this.unsubscribeForecastEvents();
     if (this.clockInterval) {
@@ -458,22 +508,49 @@ measureCard() {
   this.drawChart();
 }
 
-ll(str) {
+/**
+ * Translation blocks to try for the card's language, most specific first:
+ * the full locale ('ro-RO'), then its language code ('ro'). Norwegian is keyed
+ * `nb`; older configs and some browsers use the macrolanguage code `no`.
+ */
+getLocaleCandidates() {
   const selectedLocale = this.config.locale || this.language || 'en';
-
-  // Try full locale first (e.g., 'ro-RO')
-  if (locale[selectedLocale] && locale[selectedLocale][str]) {
-    return locale[selectedLocale][str];
-  }
-
-  // Fall back to language code (e.g., 'ro' from 'ro-RO')
   const languageCode = selectedLocale.split('-')[0];
-  if (locale[languageCode] && locale[languageCode][str]) {
-    return locale[languageCode][str];
+  const aliases = { no: 'nb', nn: 'nb' };
+  return [selectedLocale, languageCode, aliases[languageCode]]
+    .filter((key) => key && locale[key]);
+}
+
+ll(str) {
+  for (const key of this.getLocaleCandidates()) {
+    if (locale[key][str]) {
+      return locale[key][str];
+    }
   }
 
   // Final fallback to English
   return locale.en[str];
+}
+
+/**
+ * Condition text for the main section. The card's own translations cover the
+ * weather conditions; `unknown`, `unavailable` and anything new fall back to
+ * Home Assistant's translations, then to the raw state.
+ */
+localizeCondition(condition) {
+  const own = this.ll(condition);
+  if (own) {
+    return own;
+  }
+  const localize = this._hass && this._hass.localize;
+  if (typeof localize === 'function') {
+    const translated = localize(`component.weather.entity_component._.state.${condition}`)
+      || localize(`state.default.${condition}`);
+    if (translated) {
+      return translated;
+    }
+  }
+  return condition;
 }
 
 getTimezone() {
@@ -611,17 +688,10 @@ isDaytimeAt(instant, options = {}) {
  * @returns {Array|null} - locale array or null if not found
  */
 getLocaleArray(key) {
-  const selectedLocale = this.config.locale || this.language || 'en';
-  
-  // Try full locale first (e.g., 'ro-RO')
-  if (locale[selectedLocale] && locale[selectedLocale][key] && locale[selectedLocale][key].length) {
-    return locale[selectedLocale][key];
-  }
-  
-  // Try language code (e.g., 'ro' from 'ro-RO')
-  const languageCode = selectedLocale.split('-')[0];
-  if (locale[languageCode] && locale[languageCode][key] && locale[languageCode][key].length) {
-    return locale[languageCode][key];
+  for (const localeKey of this.getLocaleCandidates()) {
+    if (locale[localeKey][key] && locale[localeKey][key].length) {
+      return locale[localeKey][key];
+    }
   }
   
   // English fallback with safety check
@@ -643,14 +713,38 @@ formatLocalizedShortDateLabel(label, locale) {
   }
 }
 
+/**
+ * Weekday (0 = Sunday) and month (0 = January) of an instant in the given
+ * timezone. `Date#getDay` and `Date#getMonth` use the browser's timezone, which
+ * differs from the card's on a dual-location dashboard.
+ */
+getZonedDateIndices(date, timezone) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      month: 'numeric',
+      timeZone: timezone
+    }).formatToParts(date);
+    const weekday = parts.find((p) => p.type === 'weekday').value;
+    const month = Number(parts.find((p) => p.type === 'month').value);
+    const dayIndex = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(weekday);
+    if (dayIndex >= 0 && month >= 1 && month <= 12) {
+      return { dayIndex, monthIndex: month - 1 };
+    }
+  } catch (e) {
+    // Invalid timezone: fall through to the browser's own calendar.
+  }
+  return { dayIndex: date.getDay(), monthIndex: date.getMonth() };
+}
+
 getLocalizedDayName(date, timezone) {
-  const dayIndex = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  const { dayIndex } = this.getZonedDateIndices(date, timezone);
   
   // Priority 1: Browser Intl localized short weekday name
   try {
     const selectedLocale = this.config.locale || this.language || 'en';
     const dayFormatter = new Intl.DateTimeFormat(selectedLocale, {
-      weekday: 'short',
+      weekday: document.dir === 'rtl' ? 'long' : 'short',
       timeZone: timezone
     });
     const formatted = dayFormatter.format(date);
@@ -664,7 +758,7 @@ getLocalizedDayName(date, timezone) {
   // Priority 2: Try full day translation array from locale.js
   const days = this.getLocaleArray('days');
   if (days && days[dayIndex] && typeof days[dayIndex] === 'string' && days[dayIndex].length > 0) {
-    const dayName = days[dayIndex].substring(0, 3);
+    const dayName = document.dir === 'rtl' ? days[dayIndex] : days[dayIndex].substring(0, 3);
     return this.formatLocalizedShortDateLabel(dayName, this.config.locale || this.language || 'en');
   }
   
@@ -677,7 +771,7 @@ getLocalizedDayName(date, timezone) {
  * Get localized day name (full)
  */
 getLocalizedDayNameFull(date, timezone) {
-  const dayIndex = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  const { dayIndex } = this.getZonedDateIndices(date, timezone);
   
   // Priority 1: Try translation array from locale.js
   const days = this.getLocaleArray('days');
@@ -720,7 +814,7 @@ getLocalizedDayNumber(date, locale, timezone) {
  * Get localized month name (full)
  */
 getLocalizedMonthName(date, timezone) {
-  const monthIndex = date.getMonth(); // 0 = January, 1 = February, etc.
+  const { monthIndex } = this.getZonedDateIndices(date, timezone);
   
   // Priority 1: Try translation array from locale.js
   const months = this.getLocaleArray('months');
@@ -752,7 +846,7 @@ getLocalizedMonthName(date, timezone) {
  * Get localized month name (short - 3 letters uppercase)
  */
 getLocalizedMonthNameShort(date, timezone) {
-  const monthIndex = date.getMonth(); // 0 = January, 1 = February, etc.
+  const { monthIndex } = this.getZonedDateIndices(date, timezone);
   
   // Priority 1: Try translation array from locale.js
   const months = this.getLocaleArray('months');
@@ -1026,6 +1120,37 @@ convertWindSpeed(windSpeed, targetUnit = this.unitSpeed, sourceUnit = this.weath
   return Math.round(numericWindSpeed * toMetersPerSecond * fromMetersPerSecond);
 }
 
+/**
+ * Convert a pressure between any of the units Home Assistant reports, through
+ * pascals, and round it for display. An unknown unit is shown unconverted,
+ * labelled with its own unit.
+ * @returns {{ value: (number|string|undefined), unit: string }}
+ */
+formatPressure(value, fromUnit, toUnit = fromUnit) {
+  const numericValue = Number(value);
+  if (value === undefined || value === null || value === '' || !Number.isFinite(numericValue)) {
+    return { value, unit: toUnit || fromUnit };
+  }
+  const toPascals = {
+    'Pa': 1,
+    'hPa': 100,
+    'mbar': 100,
+    'cbar': 1000,
+    'kPa': 1000,
+    'bar': 100000,
+    'mmHg': 133.322387415,
+    'inHg': 3386.389,
+    'psi': 6894.757,
+  };
+  const decimals = { 'kPa': 1, 'cbar': 1, 'bar': 3, 'inHg': 2, 'psi': 2 };
+  const fromFactor = toPascals[fromUnit];
+  const toFactor = toPascals[toUnit];
+  const unit = fromFactor && toFactor ? toUnit : fromUnit;
+  const converted = fromFactor && toFactor ? numericValue * fromFactor / toFactor : numericValue;
+  const places = decimals[unit] || 0;
+  return { value: places ? converted.toFixed(places) : Math.round(converted), unit };
+}
+
 convertTemperature(temp, fromUnit, toUnit) {
   if (!toUnit || fromUnit === toUnit) return temp;
   
@@ -1161,14 +1286,14 @@ async updated(changedProperties) {
   if (changedProperties.has('config')) {
     const oldConfig = changedProperties.get('config');
 
-    const forecastType = this.config.forecast.type || 'daily';
-    const resolvedKey = `${this.getForecastEntityId(forecastType)}|${forecastType}`;
-    const subscriptionChanged = oldConfig && resolvedKey !== this._forecastSubscriptionKey;
     const autoscrollChanged = oldConfig && this.config.autoscroll !== oldConfig.autoscroll;
 
-    if (subscriptionChanged) {
-      this.unsubscribeForecastEvents();
-      this.subscribeForecastEvents();
+    if (oldConfig) {
+      this.syncForecastSubscriptions();
+      const cached = this._forecastCache && this._forecastCache[this.currentForecastType()];
+      if (cached) {
+        this.forecasts = cached;
+      }
     }
 
     if (this.forecasts && this.forecasts.length) {
@@ -1176,7 +1301,7 @@ async updated(changedProperties) {
     }
 
     if (autoscrollChanged) {
-      if (!this.config.autoscroll) {
+      if (this.config.autoscroll) {
         this.autoscroll();
       } else {
         this.cancelAutoscroll();
@@ -1205,6 +1330,8 @@ autoscroll() {
     );
     this.autoscrollTimeout = setTimeout(() => {
       this.autoscrollTimeout = null;
+      // Re-render too, so the icon and wind rows drop the same past slot.
+      this.requestUpdate();
       this.updateChart();
       updateChartOncePerHour();
     }, nextHour - now);
@@ -1350,7 +1477,7 @@ createTemperatureGradient(data, unit, ctx, chartArea, rangeC = null) {
   const dataLength = data.length;
   
   for (let i = 0; i < dataLength; i++) {
-    const position = i / (dataLength - 1);
+    const position = dataLength === 1 ? 0 : i / (dataLength - 1);
     const color = this.getTemperatureColorWithRange(data[i], unit, rangeC);
     gradient.addColorStop(position, color);
   }
@@ -1385,31 +1512,24 @@ drawChart({ config, language, weather, forecastItems } = this) {
     this.forecastChart.destroy();
   }
   var tempUnit = this.unitTemperature || this._hass.config.unit_system.temperature;
-  var lengthUnit = this._hass.config.unit_system.length;
-  const sourcePrecipUnit = this.getSourcePrecipitationUnit();
-  const displayPrecipUnit = this.getDisplayPrecipitationUnit(sourcePrecipUnit);
-  if (config.forecast.precipitation_type === 'probability') {
-    var precipUnit = '%';
-  } else {
-    var precipUnit = this.ll('units')[displayPrecipUnit] || displayPrecipUnit;
-  }
+  const displayPrecipUnit = this.getDisplayPrecipitationUnit();
+  const precipUnit = config.forecast.precipitation_type === 'probability'
+    ? '%'
+    : this.ll('units')[displayPrecipUnit] || displayPrecipUnit;
+  // computeForecastData already converted rainfall to the display unit.
   const formatPrecipitationValue = (rawValue) => {
     const numericValue = Number(rawValue);
-    if (!Number.isFinite(numericValue)) {
-      return rawValue;
-    }
-
-    if (config.forecast.precipitation_type !== 'rainfall') {
-      return numericValue;
-    }
-
-    const convertedValue = this.convertPrecipitation(numericValue, sourcePrecipUnit, displayPrecipUnit);
-    return Number.isFinite(convertedValue) ? convertedValue : numericValue;
+    return Number.isFinite(numericValue) ? numericValue : rawValue;
   };
   const data = this.computeForecastData();
+  // updateChart() swaps the data on this chart instance without rebuilding the
+  // callbacks below, so they read the current slice from here, not `data`.
+  this._chartData = data;
   const tempColorRange = this.getTemperatureRangeC(data.tempHigh, tempUnit);
 
-  var style = getComputedStyle(document.body);
+  // Read theme variables from the card itself, so view- and card-level themes
+  // (and card-mod) apply, not only the page theme set on <body>.
+  var style = getComputedStyle(this);
   var backgroundColor = style.getPropertyValue('--card-background-color');
   var textColor = style.getPropertyValue('--primary-text-color');
   var dividerColor = style.getPropertyValue('--divider-color');
@@ -1421,20 +1541,10 @@ drawChart({ config, language, weather, forecastItems } = this) {
 
   const ctx = canvas.getContext('2d');
 
-  let precipMax;
+  const precipMax = config.forecast.precipitation_type === 'probability'
+    ? 100
+    : this.getPrecipitationAxisMax(displayPrecipUnit, config.forecast.type === 'hourly');
 
-  if (config.forecast.precipitation_type === 'probability') {
-    precipMax = 100;
-  } else {
-    if (config.forecast.type === 'hourly') {
-      precipMax = lengthUnit === 'km' ? 4 : 1;
-    } else {
-      precipMax = lengthUnit === 'km' ? 20 : 1;
-    }
-  }
-
-  Chart.defaults.color = textColor;
-  Chart.defaults.scale.grid.color = dividerColor;
   Chart.defaults.elements.line.fill = false;
   Chart.defaults.elements.line.tension = 0.3;
   Chart.defaults.elements.line.borderWidth = 1.5;
@@ -1450,7 +1560,7 @@ drawChart({ config, language, weather, forecastItems } = this) {
       borderColor: config.forecast.use_color_thresholds 
         ? (context) => {
             if (context.chart.chartArea) {
-              return this.createTemperatureGradient(data.tempHigh, tempUnit, context.chart.ctx, context.chart.chartArea, tempColorRange);
+              return this.createTemperatureGradient(context.chart.data.datasets[0].data, tempUnit, context.chart.ctx, context.chart.chartArea, tempColorRange);
             }
             return config.forecast.temperature1_color;
           }
@@ -1458,7 +1568,7 @@ drawChart({ config, language, weather, forecastItems } = this) {
       backgroundColor: config.forecast.use_color_thresholds
         ? (context) => {
             if (context.chart.chartArea) {
-              return this.createTemperatureGradient(data.tempHigh, tempUnit, context.chart.ctx, context.chart.chartArea, tempColorRange);
+              return this.createTemperatureGradient(context.chart.data.datasets[0].data, tempUnit, context.chart.ctx, context.chart.chartArea, tempColorRange);
             }
             return config.forecast.temperature1_color;
           }
@@ -1503,12 +1613,13 @@ drawChart({ config, language, weather, forecastItems } = this) {
 
         const rainfallRaw = context.dataset.data[context.dataIndex];
         const rainfall = formatPrecipitationValue(rainfallRaw);
-        const probability = data.forecast[context.dataIndex].precipitation_probability;
+        const item = self._chartData.forecast[context.dataIndex];
+        const probability = item ? item.precipitation_probability : undefined;
 
         let formattedValue;
         if (precipitationType === 'rainfall') {
           if (probability !== undefined && probability !== null && config.forecast.show_probability) {
-	    formattedValue = `${rainfall > 9 ? Math.round(rainfall) : rainfall.toFixed(1)} ${precipUnit}\n${Math.round(probability)}%`;
+            formattedValue = `${rainfall > 9 ? Math.round(rainfall) : rainfall.toFixed(1)} ${precipUnit}\n${Math.round(probability)}%`;
           } else {
             formattedValue = `${rainfall > 9 ? Math.round(rainfall) : rainfall.toFixed(1)} ${precipUnit}`;
           }
@@ -1517,6 +1628,13 @@ drawChart({ config, language, weather, forecastItems } = this) {
         }
 
         formattedValue = formattedValue.replace('\n', '\n\n');
+
+        // Canvas labels need explicit bidi context because the chart stays LTR.
+        if (document.dir === 'rtl') {
+          formattedValue = formattedValue.split('\n')
+            .map((line) => line ? `\u202B${line}\u202C` : line)
+            .join('\n');
+        }
 
         return formattedValue;
       },
@@ -1536,8 +1654,8 @@ drawChart({ config, language, weather, forecastItems } = this) {
       display: function (context) {
         return 'true';
       },
-      formatter: function (value, context) {
-        return context.dataset.data[context.dataIndex] + '°';
+      formatter: (value, context) => {
+        return this.renderBidiMeasurement(context.dataset.data[context.dataIndex] + '°');
       },
       align: 'top',
       anchor: 'center',
@@ -1556,8 +1674,8 @@ drawChart({ config, language, weather, forecastItems } = this) {
       display: function (context) {
         return 'true';
       },
-      formatter: function (value, context) {
-        return context.dataset.data[context.dataIndex] + '°';
+      formatter: (value, context) => {
+        return this.renderBidiMeasurement(context.dataset.data[context.dataIndex] + '°');
       },
       align: 'bottom',
       anchor: 'center',
@@ -1571,13 +1689,45 @@ drawChart({ config, language, weather, forecastItems } = this) {
     };
   }
 
+  // Optional: mark today's column (daily forecasts only) with a soft band and a bold date label.
+  // Resolved on every draw: updateChart() reuses this chart instance, so labels and "today" change.
+  const todayIndexOf = (labels) => (config.forecast.highlight_today && (config.forecast.type || 'daily') === 'daily'
+    ? (labels || []).findIndex((dt) => self.forecastDateKey(dt) === self.forecastDateKey(new Date()))
+    : -1);
+  const highlightTodayPlugin = {
+    id: 'highlightToday',
+    beforeDatasetsDraw(chart) {
+      const labels = chart.data.labels || [];
+      const todayIndex = todayIndexOf(labels);
+      if (todayIndex < 0) {
+        return;
+      }
+      const xScale = chart.scales.x;
+      const area = chart.chartArea;
+      if (!xScale || !area) {
+        return;
+      }
+      const center = xScale.getPixelForValue(todayIndex);
+      const step = labels.length > 1
+        ? Math.abs(xScale.getPixelForValue(1) - xScale.getPixelForValue(0))
+        : area.right - area.left;
+      const c = chart.ctx;
+      c.save();
+      c.fillStyle = config.forecast.highlight_today_color || 'rgba(127, 127, 127, 0.12)';
+      c.fillRect(Math.max(area.left, center - step / 2), area.top, Math.min(step, area.right - area.left), area.bottom - area.top);
+      c.restore();
+    },
+  };
+
   this.forecastChart = new Chart(ctx, {
     type: 'bar',
+    plugins: [highlightTodayPlugin],
     data: {
       labels: data.dateTime,
       datasets: datasets,
     },
     options: {
+      color: textColor,
       maintainAspectRatio: false,
       animation: config.forecast.disable_animation === true ? { duration: 0 } : {},
       layout: {
@@ -1598,6 +1748,7 @@ drawChart({ config, language, weather, forecastItems } = this) {
           ticks: {
               maxRotation: 0,
               color: config.forecast.chart_datetime_color || textColor,
+              font: (context) => (context.index === todayIndexOf(context.chart.data.labels) ? { weight: 'bold' } : {}),
               padding: config.forecast.precipitation_type === 'rainfall' && config.forecast.show_probability && config.forecast.type !== 'hourly' ? 4 : 10,
               callback: function (value, index, values) {
                   var datetime = this.getLabelForValue(value);
@@ -1620,8 +1771,7 @@ drawChart({ config, language, weather, forecastItems } = this) {
 
                   if (tzHours === 0 && tzMinutes === 0 && config.forecast.type === 'hourly') {
                       var monthShort = self.getLocalizedMonthNameShort(dateObj, timezone);
-                      var dayNumber = self.getLocalizedDayNumber(dateObj, locale, timezone);
-                      var date = monthShort + ' ' + dayNumber;
+                      var date = monthShort + ' ' + self.getLocalizedDayNumber(dateObj, locale, timezone);
                       time = time.replace('a.m.', 'AM').replace('p.m.', 'PM');
                       return [date, time];
                   }
@@ -1678,6 +1828,7 @@ drawChart({ config, language, weather, forecastItems } = this) {
           display: false,
         },
         datalabels: {
+          textAlign: 'left',
           backgroundColor: backgroundColor,
           borderColor: context => context.dataset.backgroundColor,
           borderRadius: 0,
@@ -1688,11 +1839,13 @@ drawChart({ config, language, weather, forecastItems } = this) {
             size: config.forecast.labels_font_size,
             lineHeight: 0.7,
           },
-          formatter: function (value, context) {
-            return context.dataset.data[context.dataIndex] + '°';
+          formatter: (value, context) => {
+            return this.renderBidiMeasurement(context.dataset.data[context.dataIndex] + '°');
           },
         },
         tooltip: {
+          rtl: document.dir === 'rtl',
+          textDirection: document.dir === 'rtl' ? 'rtl' : 'ltr',
           caretSize: 0,
           caretPadding: 15,
           callbacks: {
@@ -1715,10 +1868,11 @@ drawChart({ config, language, weather, forecastItems } = this) {
               
               return weekdayShort + ', ' + monthShort + ' ' + dayNumber + ', ' + timeStr;
             },
-    label: function (context) {
+    label: (context) => {
       var label = context.dataset.label;
       var value = context.formattedValue;
-      var probability = data.forecast[context.dataIndex].precipitation_probability;
+      var item = this._chartData.forecast[context.dataIndex];
+      var probability = item ? item.precipitation_probability : undefined;
       var unit = context.datasetIndex === 2 ? precipUnit : tempUnit;
 
       if (config.forecast.precipitation_type === 'rainfall' && context.datasetIndex === 2) {
@@ -1730,9 +1884,9 @@ drawChart({ config, language, weather, forecastItems } = this) {
       }
 
       if (config.forecast.precipitation_type === 'rainfall' && context.datasetIndex === 2 && config.forecast.show_probability && probability !== undefined && probability !== null) {
-        return label + ': ' + value + ' ' + precipUnit + ' / ' + Math.round(probability) + '%';
+        return label + ': ' + this.renderBidiMeasurement(value + ' ' + precipUnit + ' / ' + Math.round(probability) + '%');
       } else {
-        return label + ': ' + value + ' ' + unit;
+        return label + ': ' + this.renderBidiMeasurement(value + ' ' + unit);
       }
             },
           },
@@ -1742,8 +1896,36 @@ drawChart({ config, language, weather, forecastItems } = this) {
   });
 }
 
+/**
+ * The forecast slots on screen: past slots dropped when autoscroll is on, then
+ * limited to the number of columns that fit. The chart, the icon row, the wind
+ * row and the extra rows all use this, so their columns stay aligned.
+ */
+getVisibleForecast(forecastItems = this.forecastItems) {
+  let forecast = this.forecasts || [];
+  if (this.config.autoscroll) {
+    const cutoff = (this.config.forecast.type === 'hourly' ? 1 : 24) * 60 * 60 * 1000;
+    const now = Date.now();
+    forecast = forecast.filter((item) => now - new Date(item.datetime).getTime() <= cutoff);
+  }
+  return forecast.slice(0, forecastItems);
+}
+
+/**
+ * Suggested ceiling for the precipitation axis in the display unit, so light
+ * rain does not fill the chart. Larger values still extend the axis.
+ */
+getPrecipitationAxisMax(displayUnit, isHourly) {
+  if (this.normalizePrecipitationUnit(displayUnit) === 'in') {
+    return 1;
+  }
+  const millimeters = isHourly ? 4 : 20;
+  const converted = this.convertPrecipitation(millimeters, 'mm', displayUnit);
+  return Number.isFinite(converted) ? converted : millimeters;
+}
+
 computeForecastData({ config, forecastItems } = this) {
-  var forecast = this.forecasts ? this.forecasts.slice(0, forecastItems) : [];
+  var forecast = this.getVisibleForecast(forecastItems);
   var roundTemp = config.forecast.round_temp == true;
   var dateTime = [];
   var tempHigh = [];
@@ -1754,14 +1936,11 @@ computeForecastData({ config, forecastItems } = this) {
   const forecastSourceTempUnit = this.getForecastEntityAttributes(forecastType).temperature_unit
     || (this.weather && this.weather.attributes.temperature_unit);
 
+  const sourcePrecipUnit = this.getSourcePrecipitationUnit();
+  const displayPrecipUnit = this.getDisplayPrecipitationUnit(sourcePrecipUnit);
+
   for (var i = 0; i < forecast.length; i++) {
     var d = forecast[i];
-    if (config.autoscroll) {
-      const cutoff = (config.forecast.type === 'hourly' ? 1 : 24) * 60 * 60 * 1000;
-      if (new Date() - new Date(d.datetime) > cutoff) {
-        continue;
-      }
-    }
     dateTime.push(d.datetime);
     
     let highTemp = d.temperature;
@@ -1789,8 +1968,10 @@ computeForecastData({ config, forecastItems } = this) {
     if (config.forecast.precipitation_type === 'probability') {
       precip.push(d.precipitation_probability);
     } else {
-      const numericPrecipitation = Number(d.precipitation);
-      if (Number.isFinite(numericPrecipitation)) {
+      // Bars are drawn in the display unit, the same unit as the labels and
+      // the axis ceiling.
+      const numericPrecipitation = Number(this.convertPrecipitation(d.precipitation, sourcePrecipUnit, displayPrecipUnit));
+      if (d.precipitation !== null && d.precipitation !== undefined && Number.isFinite(numericPrecipitation)) {
         precip.push(Math.round(numericPrecipitation * 100) / 100);
       } else {
         precip.push(d.precipitation);
@@ -1813,6 +1994,7 @@ updateChart({ forecasts, forecastChart } = this) {
   }
 
   const data = this.computeForecastData();
+  this._chartData = data;
 
   if (forecastChart) {
     forecastChart.data.labels = data.dateTime;
@@ -1904,6 +2086,8 @@ updateChart({ forecasts, forecastChart } = this) {
         .main .current-temp {
           font-size: ${config.current_temp_size}px;
           font-weight: 300;
+          direction: ltr;
+          unicode-bidi: isolate;
         }
         .main .current-condition {
           font-size: 18px;
@@ -1924,6 +2108,7 @@ updateChart({ forecasts, forecastChart } = this) {
         .date-text {
           font-size: ${config.day_date_size}px;
           color: var(--secondary-text-color);
+          direction: var(--direction, inherit);
         }
         .main span {
           font-size: 18px;
@@ -1935,7 +2120,6 @@ updateChart({ forecasts, forecastChart } = this) {
           align-items: center;
           margin-bottom: 6px;
       	  font-weight: 300;
-          direction: ltr;
         }
         .chart-container {
           position: relative;
@@ -1956,6 +2140,33 @@ updateChart({ forecasts, forecastChart } = this) {
           flex-direction: column;
           align-items: center;
           margin: 1px;
+        }
+        .extra-row {
+          display: flex;
+          justify-content: space-around;
+          align-items: center;
+          margin: 0px 5px;
+          font-weight: 300;
+          cursor: pointer;
+        }
+        .extra-detail {
+          display: flex;
+          flex: 1 1 0;
+          justify-content: center;
+          align-items: center;
+          margin: 1px;
+          min-width: 0;
+        }
+        .extra-detail ha-icon {
+          --mdc-icon-size: 15px;
+          margin-inline-end: 1px;
+        }
+        .extra-value {
+          font-size: 11px;
+        }
+        .extra-unit {
+          font-size: 9px;
+          margin-inline-start: 1px;
         }
         .wind-details {
           display: flex;
@@ -2004,6 +2215,16 @@ updateChart({ forecasts, forecastChart } = this) {
           margin-top: 5px;
           font-weight: 400;
         }
+        .card-version {
+          position: absolute;
+          bottom: 2px;
+          right: 6px; /* physical, not inset-inline-end: bottom-right in RTL too */
+          font-size: 9px;
+          line-height: 1;
+          color: var(--secondary-text-color);
+          opacity: 0.6;
+          pointer-events: none;
+        }
         .updated {
           font-size: 13px;
           align-items: right;
@@ -2026,9 +2247,24 @@ updateChart({ forecasts, forecastChart } = this) {
         .forecast-toggle:hover {
           opacity: 1;
         }
-        .forecast-toggle:disabled {
-          cursor: default;
-          opacity: 0.7;
+        .attributes .water-percent,
+        .attributes .pressure,
+        .attributes .dew-point,
+        .attributes .visibility,
+        .attributes .uv-index,
+        .attributes .wind-speed-attribute,
+        .attributes .wind-gust-speed {
+          direction: ltr;
+          unicode-bidi: isolate;
+        }
+        .forecast-toggle {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .forecast-toggle .auto-rotate-icon {
+          --mdc-icon-size: 14px;
+          color: inherit;
         }
       </style>
 
@@ -2044,8 +2280,10 @@ updateChart({ forecasts, forecastChart } = this) {
           ` : ''}
           ${this.renderForecastConditionIcons()}
           ${this.renderWind()}
+          ${this.renderExtraRows()}
           ${this.renderLastUpdated()}
         </div>
+        <div class="card-version">v${CARD_VERSION}</div>
       </ha-card>
     `;
   }
@@ -2054,15 +2292,10 @@ renderMain({ config, sun, weather, temperature, feels_like, description } = this
   if (config.show_main === false)
     return html``;
 
-  const use12HourFormat = config.use_12hour_format;
-  const showTime = config.show_time;
-  const showDay = config.show_day;
-  const showDate = config.show_date;
   const showFeelsLike = config.show_feels_like;
   const showDescription = config.show_description;
   const showCurrentCondition = config.show_current_condition !== false;
   const showTemperature = config.show_temperature !== false;
-  const showSeconds = config.show_time_seconds === true;
 
   let roundedTemperature = parseFloat(temperature);
   
@@ -2134,7 +2367,7 @@ renderMain({ config, sun, weather, temperature, feels_like, description } = this
         </div>
         ${showCurrentCondition ? html`
           <div class="current-condition">
-            ${this.ll(currentCondition)}
+            ${this.localizeCondition(currentCondition)}
           </div>
         ` : ''}
         ${showFeelsLike && roundedFeelsLike ? html`
@@ -2260,9 +2493,10 @@ renderClock({ config } = this) {
       ` : ''}
       ${showForecastToggle ? html`
         <button class="forecast-toggle"
-          @click="${this.handleForecastTypeToggle.bind(this)}"
-          ?disabled="${this._canAutoRotate}">
-          ${this._canAutoRotate ? `${this.ll('auto')} [${parseInt(config.forecast.auto_rotate, 10)}]` : (this.config.forecast.type === 'daily' ? this.ll('hourly') : this.ll('daily'))}
+          @click="${this.handleForecastToggleClick.bind(this)}"
+          title="${this._canAutoRotate ? this.ll('auto') : ''}">
+          ${this.config.forecast.type === 'daily' ? this.ll('hourly') : this.ll('daily')}
+          ${this._canAutoRotate ? html`<ha-icon class="auto-rotate-icon" icon="mdi:autorenew" aria-label="${this.ll('auto')}"></ha-icon>` : ''}
         </button>
       ` : ''}
     </div>
@@ -2276,7 +2510,6 @@ renderAttributes({ config, humidity, pressure, windSpeed, windDirection, sun, la
     return html``;
 
   let dWindSpeed = this.convertWindSpeed(windSpeed);
-  let dPressure = pressure;
   const dewPointNumber = Number(dew_point);
   let dDewPoint = dew_point;
   const dewPointDisplayUnit = this.unitTemperature || this.weather.attributes.temperature_unit;
@@ -2293,32 +2526,7 @@ renderAttributes({ config, humidity, pressure, windSpeed, windDirection, sun, la
   }
   const dWindGustSpeed = this.convertWindSpeed(wind_gust_speed);
 
-  if (this.unitPressure !== this.weather.attributes.pressure_unit) {
-    if (this.unitPressure === 'mmHg') {
-      if (this.weather.attributes.pressure_unit === 'hPa') {
-        dPressure = Math.round(pressure * 0.75006);
-      } else if (this.weather.attributes.pressure_unit === 'inHg') {
-        dPressure = Math.round(pressure * 25.4);
-      }
-    } else if (this.unitPressure === 'hPa') {
-      if (this.weather.attributes.pressure_unit === 'mmHg') {
-        dPressure = Math.round(pressure / 0.75006);
-      } else if (this.weather.attributes.pressure_unit === 'inHg') {
-        dPressure = Math.round(pressure * 33.8639);
-      }
-    } else if (this.unitPressure === 'inHg') {
-      if (this.weather.attributes.pressure_unit === 'mmHg') {
-        dPressure = pressure / 25.4;
-      } else if (this.weather.attributes.pressure_unit === 'hPa') {
-        dPressure = pressure / 33.8639;
-      }
-      dPressure = dPressure.toFixed(2);
-    }
-  } else {
-    if (this.unitPressure === 'hPa' || this.unitPressure === 'mmHg') {
-      dPressure = Math.round(dPressure);
-    }
-  }
+  const { value: dPressure, unit: pressureUnit } = this.formatPressure(pressure, this.weather.attributes.pressure_unit, this.unitPressure);
 
   const showHumidity = config.show_humidity !== false;
   const showPressure = config.show_pressure !== false;
@@ -2340,16 +2548,16 @@ return html`
       ${((showHumidity && humidity !== undefined) || (showPressure && dPressure !== undefined) || (showDewpoint && dew_point !== undefined) || (showVisibility && dVisibility !== undefined)) ? html`
         <div>
           ${showHumidity && humidity !== undefined ? html`
-            <ha-icon icon="hass:water-percent"></ha-icon> ${humidity} %<br>
+            <ha-icon icon="hass:water-percent"></ha-icon> <span class="water-percent">${humidity} %</span><br>
           ` : ''}
           ${showPressure && dPressure !== undefined ? html`
-            <ha-icon icon="hass:gauge"></ha-icon> ${dPressure} ${this.ll('units')[this.unitPressure]} <br>
+            <ha-icon icon="hass:gauge"></ha-icon> <span class="pressure">${dPressure} ${this.ll('units')[pressureUnit] || pressureUnit}</span> <br>
           ` : ''}
           ${showDewpoint && dew_point !== undefined ? html`
-            <ha-icon icon="hass:thermometer-water"></ha-icon> ${dDewPoint} ${dewPointDisplayUnit} <br>
+            <ha-icon icon="hass:thermometer-water"></ha-icon> <span class="dew-point">${dDewPoint} ${dewPointDisplayUnit}</span> <br>
           ` : ''}
           ${showVisibility && dVisibility !== undefined ? html`
-            <ha-icon icon="hass:eye"></ha-icon> ${dVisibility} ${visibilityDisplayUnit}
+            <ha-icon icon="hass:eye"></ha-icon> <span class="visibility">${dVisibility} ${visibilityDisplayUnit}</span>
           ` : ''}
         </div>
       ` : ''}
@@ -2357,7 +2565,7 @@ return html`
         <div>
           ${showUv && uv_index !== undefined ? html`
             <div>
-              <ha-icon icon="hass:white-balance-sunny"></ha-icon> UV: ${Math.round(uv_index * 10) / 10}
+              <ha-icon icon="hass:white-balance-sunny"></ha-icon> <span class="uv-index">UV: ${Math.round(uv_index * 10) / 10}</span>
             </div>
           ` : ''}
           ${showSun && sun !== undefined ? html`
@@ -2370,15 +2578,15 @@ return html`
       ${((showWindDirection && windDirection !== undefined) || (showWindSpeed && dWindSpeed !== undefined)) ? html`
         <div>
           ${showWindDirection && windDirection !== undefined && windDirection !== null ? html`
-            ${this.getWindDirIcon(windDirection) ? html`<ha-icon icon="hass:${this.getWindDirIcon(windDirection)}"></ha-icon> ` : ''}${this.getWindDir(windDirection)} <br>
+            ${this.getWindDirIcon(windDirection) ? html`<ha-icon icon="hass:${this.getWindDirIcon(windDirection)}"></ha-icon> ` : ''}<span class="wind-direction">${this.getWindDir(windDirection)}</span> <br>
           ` : ''}
           ${showWindSpeed && dWindSpeed !== undefined ? html`
             <ha-icon icon="hass:weather-windy"></ha-icon>
-            ${dWindSpeed} ${this.ll('units')[this.unitSpeed] || this.unitSpeed} <br>
+            <span class="wind-speed-attribute">${dWindSpeed} ${this.ll('units')[this.unitSpeed] || this.unitSpeed}</span> <br>
           ` : ''}
           ${showWindgustspeed && wind_gust_speed !== undefined ? html`
             <ha-icon icon="hass:weather-windy-variant"></ha-icon>
-            ${dWindGustSpeed} ${this.ll('units')[this.unitSpeed] || this.unitSpeed}
+            <span class="wind-gust-speed">${dWindGustSpeed} ${this.ll('units')[this.unitSpeed] || this.unitSpeed}</span>
           ` : ''}
         </div>
       ` : ''}
@@ -2437,7 +2645,7 @@ renderForecastConditionIcons({ config, forecastItems, sun } = this) {
     return html``;
   }
 
-  const forecast = this.forecasts ? this.forecasts.slice(0, forecastItems) : [];
+  const forecast = this.getVisibleForecast(forecastItems);
 
   return html`
     <div class="conditions" @click="${(e) => this.showMoreInfo(config.entity)}">
@@ -2502,7 +2710,7 @@ renderWind({ config, weather, windSpeed, windDirection, forecastItems } = this) 
     return html``;
   }
 
-  const forecast = this.forecasts ? this.forecasts.slice(0, forecastItems) : [];
+  const forecast = this.getVisibleForecast(forecastItems);
 
   const hasWindData = (item) => Number.isFinite(Number(item.wind_speed))
     || (item.wind_bearing !== undefined && item.wind_bearing !== null);
@@ -2581,6 +2789,100 @@ getWindWarningColor(windSpeed, sourceUnit) {
   return null;
 }
 
+getExtraRows() {
+  const rows = this.config && this.config.forecast && this.config.forecast.extra_rows;
+  return Array.isArray(rows) ? rows.filter((row) => row && row.entity) : [];
+}
+
+/**
+ * Calendar date (YYYY-MM-DD) of a forecast item in the card's time zone, so it
+ * can be matched against per-day values that a sensor provides.
+ */
+forecastDateKey(datetime) {
+  const date = new Date(datetime);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  try {
+    // Build the key from parts: the formatted string of a locale is not a stable format.
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: this.getSunTimezone(), year: 'numeric', month: '2-digit', day: '2-digit'
+    }).formatToParts(date);
+    const part = (type) => (parts.find((p) => p.type === type) || {}).value;
+    return `${part('year')}-${part('month')}-${part('day')}`;
+  } catch (e) {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+/**
+ * Extra rows of per-day values under the forecast (e.g. sunshine hours or a PV
+ * yield forecast), read from a list attribute of any entity:
+ *   forecast:
+ *     extra_rows:
+ *       - entity: sensor.sunshine
+ *         attribute: days        # list of objects
+ *         date_key: date         # YYYY-MM-DD (default "date")
+ *         value_key: hours       # (default "value")
+ *         unit: h
+ *         icon: mdi:weather-sunny
+ *         icon_color: '#f6b100'  # optional
+ *         decimals: 0
+ * Only daily forecasts; values are matched by calendar date, missing days stay empty.
+ */
+renderExtraRows({ config, forecastItems } = this) {
+  const rows = this.getExtraRows();
+  if (!rows.length || config.show_forecast === false || (config.forecast.type || 'daily') !== 'daily' || !this._hass) {
+    return html``;
+  }
+
+  const forecast = this.getVisibleForecast(forecastItems);
+  if (!forecast.length) {
+    return html``;
+  }
+  const dateKeys = forecast.map((item) => this.forecastDateKey(item.datetime));
+
+  return rows.map((row) => {
+    const stateObj = this._hass.states[row.entity];
+    const list = stateObj && stateObj.attributes ? stateObj.attributes[row.attribute || 'forecast'] : null;
+    if (!Array.isArray(list)) {
+      return html``;
+    }
+    const dateKey = row.date_key || 'date';
+    const valueKey = row.value_key || 'value';
+    const byDate = {};
+    list.forEach((entry) => {
+      if (entry && entry[dateKey] != null) {
+        byDate[String(entry[dateKey]).slice(0, 10)] = entry[valueKey];
+      }
+    });
+    if (!dateKeys.some((key) => key in byDate)) {
+      return html``;
+    }
+    // toFixed() throws outside 0..100; ignore invalid values instead of breaking the card.
+    const d = Number(row.decimals);
+    const decimals = row.decimals != null && row.decimals !== '' && Number.isInteger(d) && d >= 0 && d <= 100 ? d : null;
+
+    return html`
+      <div class="extra-row" @click="${() => this.showMoreInfo(row.entity)}">
+        ${dateKeys.map((key) => {
+          const value = Number(byDate[key]);
+          if (byDate[key] === null || byDate[key] === undefined || byDate[key] === '' || !Number.isFinite(value)) {
+            return html`<div class="extra-detail"></div>`;
+          }
+          return html`
+            <div class="extra-detail">
+              ${row.icon ? html`<ha-icon icon="${row.icon}" style="${row.icon_color ? `color: ${row.icon_color}` : ''}"></ha-icon>` : ''}
+              <span class="extra-value">${decimals !== null ? value.toFixed(decimals) : value}</span>
+              ${row.unit ? html`<span class="extra-unit">${row.unit}</span>` : ''}
+            </div>
+          `;
+        })}
+      </div>
+    `;
+  });
+}
+
 renderLastUpdated() {
   const lastUpdatedString = this.weather.last_changed;
   const lastUpdatedTimestamp = new Date(lastUpdatedString).getTime();
@@ -2634,10 +2936,18 @@ renderLastUpdated() {
   showMoreInfo(entity) {
     this._fire('hass-more-info', { entityId: entity });
   }
+
+  // Keep canvas measurements in LTR order even when an RTL tooltip is visible.
+  renderBidiMeasurement(text) {
+    return '\u2066' + text + '\u2069';
+  }
 }
 
 // Regex to detect Latin script characters for uppercase formatting (ES2019 compatible)
 WeatherChartCard.LATIN_SCRIPT_REGEX = /^\p{Script=Latin}+$/u;
+
+// Second steps offered for auto-rotate, on top of whole minutes.
+WeatherChartCard.AUTO_ROTATE_SECONDS = [0, 5, 10, 15, 30];
 
 export default WeatherChartCard;
 
@@ -2646,10 +2956,13 @@ if (!customElements.get('weather-chart-card-ha')) {
 }
 
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "weather-chart-card-ha",
-  name: "Enhanced Weather Chart Card",
-  description: "Enhanced custom weather card with charts.",
-  preview: true,
-  documentationURL: "https://github.com/w4mhi/weather-chart-card-ha",
-});
+// A resource loaded twice (HACS plus a manual entry) must not list the card twice.
+if (!window.customCards.some((card) => card.type === 'weather-chart-card-ha')) {
+  window.customCards.push({
+    type: "weather-chart-card-ha",
+    name: "Enhanced Weather Chart Card",
+    description: "Enhanced custom weather card with charts.",
+    preview: true,
+    documentationURL: "https://github.com/w4mhi/weather-chart-card-ha",
+  });
+}

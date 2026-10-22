@@ -7,7 +7,7 @@
 ![GitHub downloads](https://img.shields.io/github/downloads/w4mhi/weather-chart-card-ha/total?style=flat-square)
 [![License](https://img.shields.io/github/license/w4mhi/weather-chart-card-ha.svg)](LICENSE)
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?repository=https%3A%2F%2Fgithub.com%2Fw4mhi%2Fweather-chart-card-ha&owner=Mihai)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=w4mhi&repository=weather-chart-card-ha)
 
 </div>
 
@@ -97,7 +97,6 @@ entity: weather.home
 ```yaml
 type: custom:weather-chart-card-ha
 entity: weather.home
-location_name: "Home"
 timezone: "America/Los_Angeles"
 show_time: true
 show_day: true
@@ -107,7 +106,6 @@ icon_style: style1
 icons_size: 20
 forecast:
   show_date_labels: true
-  condition_icon_size_multiplier: 2.0
   use_color_thresholds: true
   chart_height: 180
   labels_font_size: 11
@@ -128,8 +126,11 @@ units:
 | ----------------------| ------- | -------------------------|--------------------------------------------------------------------------------------------------- |
 | type                  | string  | **Required**             | Should be `custom:weather-chart-card-ha`.                                                             |
 | entity                | string  | **Required**             | An entity_id with the `weather` domain.                                                            |
-| location_name         | string  | none                     | Display name for the location.                                                                     |
 | timezone              | string  | none                     | Set a specific timezone (e.g., 'America/New_York'). Defaults to system timezone if not specified.  |
+| sun_city              | string  | none                     | City name for the sunrise/sunset location, set by the editor's city lookup.                        |
+| sun_latitude          | number  | HA home latitude         | Latitude for sunrise/sunset and day/night icons.                                                   |
+| sun_longitude         | number  | HA home longitude        | Longitude for sunrise/sunset and day/night icons.                                                  |
+| sun_timezone          | string  | `timezone`               | IANA timezone of the sun location. Falls back to `timezone`, then the HA timezone.                 |
 | temp                  | string  | none                     | An entity_id for a custom temperature sensor.                                                      |
 | press                 | string  | none                     | An entity_id for a custom pressure sensor.                                                         |
 | humid                 | string  | none                     | An entity_id for a custom humidity sensor.                                                         |
@@ -141,7 +142,7 @@ units:
 | wind_gust_speed       | string  | none                     | An entity_id for a custom wind gust speed sensor.                                                  |
 | visibility            | string  | none                     | An entity_id for a custom visibility sensor.                                                       |
 | description           | string  | none                     | An entity_id for a custom weather description sensor.                                              |
-| title                 | string  | none                     | Card title.                                                                                        |
+| title                 | string  | 'Weather'                | Card title. An empty string hides the header.                                                      |
 | show_main             | boolean | true                     | Show or hide the main section (time, current condition, temperature and attributes). Set to `false` for a forecast-only card. |
 | show_forecast         | boolean | true                     | Show or hide the forecast section (chart, condition icons and wind forecast). Set to `false` for a current-conditions-only card. `show_main` and `show_forecast` cannot both be `false`. |
 | show_temperature      | boolean | true                     | Show or hide the current temperature.                                                              |
@@ -150,6 +151,7 @@ units:
 | show_sun              | boolean | true                     | Show or hide the sunset information                                                                |
 | show_time             | boolean | false                    | Show or hide the current time on the card.                                                         |
 | show_time_seconds     | boolean | false                    | Show or hide seconds for the current time on the card.                                             |
+| show_hour_leading_zero | boolean | true                     | Pad single-digit hours in the clock (`09:05` instead of `9:05`).                                   |
 | show_day              | boolean | false                    | Show or hide the current day on the card. (Only visible when show_time is true.)                   |
 | show_date             | boolean | false                    | Show or hide the current date the card. (Only visible when show_time is true.)                     |
 | show_humidity         | boolean | true                     | Show or hide humidity on the card.                                                                 |
@@ -166,11 +168,11 @@ units:
 | show_forecast_toggle  | boolean | false                    | Show or hide the Daily/Hourly toggle button in the top-right corner.                               |
 | use_12hour_format     | boolean | false                    | Display time in 12-hour format (AM/PM) instead of 24-hour format.                                  |
 | icons                 | string  | none                     | Path to the location of custom icons in svg format, for example `/local/weather-icons/`.           |
-| animated_icons        | boolean | false                    | Enable the use of animated icons                                                                   |
+| animated_icons        | boolean | true                     | Enable the use of animated icons                                                                   |
 | icon_style            | string  | 'style1'                 | Options are 'style1' and 'style2' for different set of animated icons.                             |
-| icons_size            | number  | 25                       | The size of the animated or custom icons in pixels.                                                |
-| main_icon_size        | number  | 90                       | Size of main current weather icon in pixels.                                                       |
-| current_temp_size     | number  | 28                       | The size of the current temperature in pixels.                                                     |
+| icons_size            | number  | 30                       | The size of the animated or custom icons in pixels.                                                |
+| main_icon_size        | number  | 150                      | Size of main current weather icon in pixels.                                                       |
+| current_temp_size     | number  | 35                       | The size of the current temperature in pixels.                                                     |
 | time_size             | number  | 26                       | The size of the current time in pixels.                                                            |
 | day_date_size         | number  | 15                       | The size of the current day and date in pixels.                                                    |
 | forecast              | object  | none                     | See [forecast options](#forecast-options) for available options.                                   |
@@ -191,29 +193,37 @@ units:
 | temperature2_color             | string  | rgba(68, 115, 158, 1.0)  | Low/night temperature line color.                                                                  |
 | precipitation_color            | string  | rgba(132, 209, 253, 1.0) | Precipitation bar chart color.                                                                     |
 | use_color_thresholds           | boolean | true                     | Enable automatic temperature-based gradient colors for high temperature line (6 comfort levels).   |
+| gradient_mode                  | string  | classic                  | Gradient scale for the high temperature line: 'classic', 'climate_preset' or 'adaptive'.           |
+| gradient_preset                | string  | temperate                | Range for 'climate_preset' (and the 'adaptive' fallback): 'temperate', 'continental', 'subarctic', 'polar', 'hot_arid'. |
 | chart_datetime_color           | string  | primary-text-color       | Chart day or hour color                                                                            |
 | chart_text_color               | string  | none                     | Chart text color                                                                                   |
 | chart_height                   | number  | 180                      | Adjust the forecast chart height                                                                   |
 | condition_icons                | boolean | true                     | Show or hide forecast condition icons.                                                             |
-| condition_icon_size_multiplier | number  | 2.0                      | Multiplier for condition icon size relative to icons_size (0.5-4.0).                               |
 | show_wind_forecast             | boolean | true                     | Show or hide wind forecast on the card.                                                            |
 | round_temp                     | boolean | false                    | Option for rounding the forecast temperatures                                                      |
-| style                          | string  | style1                   | Change chart style, options: 'style1' or 'style2'                                                  |
+| style                          | string  | style2                   | Change chart style, options: 'style1' or 'style2'                                                  |
 | type                           | string  | daily                    | Show daily or hourly forecast if available, options: 'daily' or 'hourly'                           |
+| auto_rotate                    | number  | 0                        | Auto-rotate minutes (0-60), added to `auto_rotate_seconds`. Needs both forecast types.             |
+| auto_rotate_seconds            | number  | 0                        | Auto-rotate seconds: 0, 5, 10, 15 or 30. Both at 0 = off; 5 s to 60 min 30 s. The button keeps working and restarts the timer. |
 | daily_entity                   | string  | (main entity)            | Optional `weather.*` entity to source the **daily** forecast from. Falls back to the main `entity`. |
 | hourly_entity                  | string  | (main entity)            | Optional `weather.*` entity to source the **hourly** forecast from. Falls back to the main `entity`.|
 | number_of_forecasts            | number  | 0                        | Overrides the number of forecasts to display. Set to "0" for automatic mode.                       |
 | disable_animation              | boolean | false                    | Disable the chart animation.                                                                       |
 | show_date_labels               | boolean | true                     | Show date numbers below weekday labels in daily forecast view.                                     |
 | wind_warning                   | boolean/list | false               | Colour the wind forecast by Beaufort force: `true` uses 6 (orange) and 8 (red), or give `[warning, danger]`. |
+| extra_rows                     | list    | none                     | Extra rows of per-day values under the forecast, read from a list attribute of any entity (daily forecast only). See [Extra Rows](#extra-rows-per-day-values-from-a-sensor). |
+| highlight_today                | boolean | false                    | Highlight today's column in the daily forecast (soft background band, bold date label).            |
+| highlight_today_color          | string  | rgba(127,127,127,0.12)   | Colour of the today band.                                                                          |
 
 ### Units of Measurement
 
 | Name                 | Type    | Default                  | Description                                                                                        |
 | -------------------- | ------- | -------------------------|--------------------------------------------------------------------------------------------------- |
-| pressure             | string  | none                     | Convert to 'hPa' or 'mmHg' or 'inHg'                                                               |
-| speed                | string  | none                     | Convert to 'km/h' or 'm/s' or 'Bft' or 'mph'                                                       |
+| pressure             | string  | hPa                      | Convert to 'hPa', 'mbar', 'kPa', 'mmHg', 'inHg' or 'psi'                                           |
+| speed                | string  | none                     | Convert to 'km/h', 'm/s', 'Bft', 'mph' or 'kn'                                                     |
 | temperature          | string  | none                     | Convert to '°C' or '°F'. Applies to current temp, feels like, and forecast temperatures.           |
+| precipitation        | string  | source unit              | Convert to 'mm', 'cm', 'in', 'l/m2' or 'kg/m2'. Applies to bars, labels and tooltips.              |
+| visibility           | string  | none                     | Convert to 'km', 'm', 'mi', 'yd' or 'ft'.                                                          |
 
 
 ## 📸 Example Configurations
@@ -305,7 +315,6 @@ Perfect for monitoring weather in multiple locations with different units and ti
 # Issaquah (Imperial Units, PST)
 type: custom:weather-chart-card-ha
 entity: weather.forecast_issaquah
-location_name: "Issaquah"
 timezone: "America/Los_Angeles"
 locale: en-US # or simple: en
 units:
@@ -314,13 +323,11 @@ units:
   speed: "mph"
 forecast:
   show_date_labels: true
-  condition_icon_size_multiplier: 2.0
   use_color_thresholds: true
 
 # Câmpina (Metric Units, EET)
 type: custom:weather-chart-card-ha
 entity: weather.forecast_campina
-location_name: "Câmpina"
 timezone: "Europe/Bucharest"
 locale: ro-RO # or simple: ro
 units:
@@ -329,7 +336,6 @@ units:
   speed: "km/h"
 forecast:
   show_date_labels: true
-  condition_icon_size_multiplier: 2.0
   use_color_thresholds: true
 ```
 
@@ -382,6 +388,40 @@ forecast:
   # wind_warning: [5, 7]  # custom levels [warning, danger]
 ```
 
+### Extra Rows (per-day values from a sensor)
+Weather integrations don't provide everything you may want per day — e.g. sunshine hours or a PV yield forecast.
+`extra_rows` shows such values under the forecast, one row per entry, matched to the forecast days by calendar date.
+The source is any entity with a list attribute; each item needs a date (`YYYY-MM-DD`) and a value:
+```yaml
+type: custom:weather-chart-card-ha
+entity: weather.my_home
+forecast:
+  type: daily
+  extra_rows:
+    - entity: sensor.sunshine_forecast
+      attribute: days          # list of objects, e.g. [{date: "2026-10-19", hours: 6}, ...]
+      date_key: date           # default "date"
+      value_key: hours         # default "value"
+      unit: h
+      icon: mdi:weather-sunny
+      icon_color: '#f6b100'
+      decimals: 0
+    - entity: sensor.sunshine_forecast
+      attribute: days
+      value_key: pv_kwh
+      unit: kWh
+      icon: mdi:solar-power-variant
+```
+Days without a value stay empty but keep their column, so the row lines up with the icons above. Rows are hidden in the hourly view; invalid `decimals` values are ignored.
+
+### Highlight Today
+```yaml
+forecast:
+  type: daily
+  highlight_today: true
+  highlight_today_color: 'rgba(255, 193, 7, 0.15)'   # optional
+```
+
 ### Custom Icon Sizes
 Fine-tune icon sizes for your layout:
 ```yaml
@@ -390,7 +430,6 @@ entity: weather.my_home
 icons_size: 20                                    # Base icon size
 main_icon_size: 90                                # Main weather icon
 forecast:
-  condition_icon_size_multiplier: 1.5             # Forecast icons (20 × 1.5 = 30px)
 ```
 
 ---
@@ -517,6 +556,7 @@ The compiled file will be in `dist/weather-chart-card-ha.js`
 | French           | fr      |
 | German           | de      |
 | Greek            | el      |
+| Hebrew           | he      |
 | Hungarian        | hu      |
 | Italian          | it      |
 | Lithuanian       | lt      |
@@ -531,6 +571,11 @@ The compiled file will be in `dist/weather-chart-card-ha.js`
 | Ukrainian        | uk      |
 | 한국어           | ko      |
 | 繁體中文           | zh-Hant |
+
+Hebrew translations also support regional locales such as `he-IL`. The card follows
+Home Assistant's page direction for RTL layout, keeps numeric readings and the
+forecast timeline left-to-right, and uses locale-aware dates. See [RTL port notes](RTL_PORT.md) for compatibility
+adaptations and validation details.
 
 ---
 
@@ -553,7 +598,14 @@ npm start
 
 # Build for production
 npm run build
+
+# Run RTL/LTR browser regressions against the built bundle
+npx playwright install chromium
+npm run test:rtl
 ```
+
+On Windows, browser tests use Microsoft Edge by default. Set
+`PLAYWRIGHT_CHANNEL` to select another installed browser channel.
 
 ---
 
