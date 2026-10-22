@@ -139,8 +139,14 @@ for (const width of [390, 1200]) {
           card.config = {...card.config, forecast:{...card.config.forecast, auto_rotate:10}};
           await card.updateComplete;
         });
-        assert.equal((await toggle.textContent()).trim(), strings.auto + ' [10]');
-        assert.equal(await toggle.isDisabled(), true);
+        // Auto-rotate keeps the manual label and button, marked with an icon.
+        assert.equal((await toggle.textContent()).trim(), strings.hourly);
+        assert.equal(await toggle.isDisabled(), false);
+        assert.equal(await toggle.getAttribute('title'), strings.auto);
+        assert.equal(await page.locator('weather-chart-card-ha .forecast-toggle .auto-rotate-icon').count(), 1);
+        await toggle.click();
+        await page.waitForFunction(() => window.fixture.card.config.forecast.type === 'hourly');
+        assert.equal((await toggle.textContent()).trim(), strings.daily);
         assert.deepEqual(errors, []);
       } finally { await page.close(); }
     });

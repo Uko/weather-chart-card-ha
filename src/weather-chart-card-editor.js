@@ -1,4 +1,5 @@
 import { LitElement, html } from 'lit';
+import { configValue } from './defaults.js';
 
 const ALT_SCHEMA = [
   { name: "temp", title: "Alternative temperature sensor", selector: { entity: { domain: 'sensor' } } },
@@ -24,6 +25,7 @@ class WeatherChartCardEditor extends LitElement {
       _entity: { type: String },
       _cityInput: { type: String },
       _geoStatus: { type: String },
+      _pendingTimezone: { type: String },
     };
   }
 
@@ -34,6 +36,7 @@ class WeatherChartCardEditor extends LitElement {
     this.entities = [];
     this._cityInput = '';
     this._geoStatus = '';
+    this._pendingTimezone = '';
     this._formValueChanged = this._formValueChanged.bind(this);
     
     // Initialize with empty config to prevent crashes
@@ -86,6 +89,16 @@ class WeatherChartCardEditor extends LitElement {
 
   get config() {
     return this._config;
+  }
+
+  // Option value as the card will see it: the configured value, or the shared
+  // default when the key is absent. Switches must show what the card does.
+  _value(path) {
+    return configValue(this._config, path);
+  }
+
+  _flag(path) {
+    return this._value(path) === true;
   }
 
   updated(changedProperties) {
@@ -194,6 +207,15 @@ class WeatherChartCardEditor extends LitElement {
     this.requestUpdate();
   }
 
+  _setForecastValue(key, value) {
+    const newConfig = JSON.parse(JSON.stringify(this._config));
+    newConfig.forecast = newConfig.forecast || {};
+    newConfig.forecast[key] = value;
+    this.configChanged(newConfig);
+    this._config = newConfig;
+    this.requestUpdate();
+  }
+
   _handlePrecipitationTypeChange(e) {
     const newValue = e.target.value;
     this.config.forecast.precipitation_type = newValue;
@@ -243,9 +265,21 @@ class WeatherChartCardEditor extends LitElement {
         sun_city: city,
         sun_latitude: lat,
         sun_longitude: lon,
-        sun_timezone: sunTimezone,
-        timezone: sunTimezone || this._config.timezone,
       };
+      // A failed lookup must not save `sun_timezone: null`, nor keep the
+      // previous city's timezone; the card then falls back to `timezone`.
+      delete newConfig.sun_timezone;
+      this._pendingTimezone = '';
+      if (sunTimezone) {
+        newConfig.sun_timezone = sunTimezone;
+        // Fill an empty timezone override, but never silently replace one the
+        // user set: offer it instead.
+        if (!this._config.timezone) {
+          newConfig.timezone = sunTimezone;
+        } else if (this._config.timezone !== sunTimezone) {
+          this._pendingTimezone = sunTimezone;
+        }
+      }
       this._geoStatus = `ok:${displayName}${sunTimezone ? ` (${sunTimezone})` : ''}`;
       this.configChanged(newConfig);
       this._config = newConfig;
@@ -256,6 +290,14 @@ class WeatherChartCardEditor extends LitElement {
     }
   }
 
+  _applyPendingTimezone() {
+    const newConfig = { ...this._config, timezone: this._pendingTimezone };
+    this._pendingTimezone = '';
+    this.configChanged(newConfig);
+    this._config = newConfig;
+    this.requestUpdate();
+  }
+
   _clearCity() {
     const newConfig = { ...this._config };
     delete newConfig.sun_city;
@@ -264,6 +306,7 @@ class WeatherChartCardEditor extends LitElement {
     delete newConfig.sun_timezone;
     this._cityInput = '';
     this._geoStatus = '';
+    this._pendingTimezone = '';
     this.configChanged(newConfig);
     this._config = newConfig;
     this.requestUpdate();
@@ -280,7 +323,6 @@ class WeatherChartCardEditor extends LitElement {
     }
     const forecastConfig = this._config.forecast || {};
     const unitsConfig = this._config.units || {};
-    const isShowTimeOn = this._config.show_time !== false;
 
 
     return html`
@@ -469,7 +511,7 @@ class WeatherChartCardEditor extends LitElement {
           <option value="hu">🇭🇺 Hungarian</option>
           <option value="it">🇮🇹 Italian</option>
           <option value="lt">🇱🇹 Lithuanian</option>
-          <option value="no">🇳🇴 Norwegian</option>
+          <option value="nb">🇳🇴 Norwegian</option>
           <option value="pl">🇵🇱 Polish</option>
           <option value="pt">🇵🇹 Portuguese</option>
           <option value="ro">🇷🇴 Romanian</option>
@@ -520,6 +562,15 @@ class WeatherChartCardEditor extends LitElement {
         ` : ''}
         ${this._geoStatus === 'loading' ? html`<div style="margin-top:6px; color:var(--secondary-text-color); font-size:13px;">Looking up coordinates...</div>` : ''}
         ${this._geoStatus.startsWith('ok:') ? html`<div style="margin-top:6px; color:var(--success-color, #388e3c); font-size:13px;">✓ ${this._geoStatus.slice(3)}<br><small>lat: ${this._config.sun_latitude}, lon: ${this._config.sun_longitude}</small></div>` : ''}
+        ${this._pendingTimezone ? html`
+          <div style="margin-top:6px; font-size:13px; color:var(--secondary-text-color);">
+            The timezone override is ${this._config.timezone}; this city is in ${this._pendingTimezone}.
+            <button
+              style="margin-left:6px; padding:4px 10px; background:var(--primary-color); color:var(--text-primary-color, #fff); border:none; border-radius:4px; cursor:pointer; font-size:13px;"
+              @click="${() => this._applyPendingTimezone()}"
+            >Use ${this._pendingTimezone}</button>
+          </div>
+        ` : ''}
         ${this._geoStatus.startsWith('error:') ? html`<div style="margin-top:6px; color:var(--error-color, #c62828); font-size:13px;">✗ ${this._geoStatus.slice(6)}</div>` : ''}
         ${!this._geoStatus && this._config.sun_city ? html`<div style="margin-top:6px; color:var(--success-color, #388e3c); font-size:13px;">✓ ${this._config.sun_city}<br><small>lat: ${this._config.sun_latitude}, lon: ${this._config.sun_longitude}${this._config.sun_timezone ? `, tz: ${this._config.sun_timezone}` : ''}</small></div>` : ''}
       </div>
@@ -531,7 +582,7 @@ class WeatherChartCardEditor extends LitElement {
             name="type"
             value="daily"
             @change="${this._handleTypeChange}"
-            .checked="${forecastConfig.type === 'daily'}"
+            .checked="${this._value('forecast.type') === 'daily'}"
           ></ha-radio>
           <label class="check-label">
             Daily forecast
@@ -543,7 +594,7 @@ class WeatherChartCardEditor extends LitElement {
             name="type"
             value="hourly"
             @change="${this._handleTypeChange}"
-            .checked="${forecastConfig.type === 'hourly'}"
+            .checked="${this._value('forecast.type') === 'hourly'}"
           ></ha-radio>
           <label class="check-label">
             Hourly forecast
@@ -555,7 +606,7 @@ class WeatherChartCardEditor extends LitElement {
         <div class="switch-right">
           <ha-switch
             @change="${(e) => this._valueChanged(e, 'show_forecast_toggle')}"
-            .checked="${this._config.show_forecast_toggle === true}"
+            .checked="${this._flag('show_forecast_toggle')}"
           ></ha-switch>
           <label class="switch-label">
             Show Daily/Hourly toggle button
@@ -565,27 +616,32 @@ class WeatherChartCardEditor extends LitElement {
 
       <div class="input-container">
         <label class="switch-label">
-          Auto-rotate interval (minutes, 0 = off, 1-60)
+          Auto-rotate interval (0 min 0 s = off)
         </label>
         <input
           type="number"
+          aria-label="Auto-rotate minutes"
           min="0"
           max="60"
           step="1"
-          .value="${forecastConfig.auto_rotate || 0}"
+          .value="${String(this._value('forecast.auto_rotate'))}"
           @change="${(e) => {
             let val = parseInt(e.target.value, 10);
             if (isNaN(val) || val < 0) val = 0;
             if (val > 60) val = 60;
-            const newConfig = JSON.parse(JSON.stringify(this._config));
-            newConfig.forecast = newConfig.forecast || {};
-            newConfig.forecast.auto_rotate = val;
-            this.configChanged(newConfig);
-            this._config = newConfig;
-            this.requestUpdate();
+            e.target.value = String(val);
+            this._setForecastValue('auto_rotate', val);
           }}"
           style="width: 60px; margin-left: 8px;"
-        />
+        /> min
+        <select
+          aria-label="Auto-rotate seconds"
+          style="margin-left: 8px; padding: 4px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--card-background-color); color: var(--primary-text-color);"
+          .value="${String(this._value('forecast.auto_rotate_seconds'))}"
+          @change="${(e) => this._setForecastValue('auto_rotate_seconds', parseInt(e.target.value, 10))}"
+        >
+          ${[0, 5, 10, 15, 30].map((sec) => html`<option value="${sec}" ?selected=${sec === Number(this._value('forecast.auto_rotate_seconds'))}>${sec}</option>`)}
+        </select> s
       </div>
 
       <div class="radio-container group-spacing">
@@ -594,7 +650,7 @@ class WeatherChartCardEditor extends LitElement {
             name="style"
             value="style1"
             @change="${this._handleStyleChange}"
-            .checked="${forecastConfig.style === 'style1'}"
+            .checked="${this._value('forecast.style') === 'style1'}"
           ></ha-radio>
           <label class="check-label">
             Chart style 1
@@ -606,7 +662,7 @@ class WeatherChartCardEditor extends LitElement {
             name="style"
             value="style2"
             @change="${this._handleStyleChange}"
-            .checked="${forecastConfig.style === 'style2'}"
+            .checked="${this._value('forecast.style') === 'style2'}"
           ></ha-radio>
           <label class="check-label">
             Chart style 2
@@ -619,29 +675,29 @@ class WeatherChartCardEditor extends LitElement {
         <div class="switch-right">
           <ha-switch
             @change="${(e) => this._valueChanged(e, 'animated_icons')}"
-            .checked="${this._config.animated_icons === true}"
+            .checked="${this._flag('animated_icons')}"
           ></ha-switch>
           <label class="switch-label">
             Use Animated Icons
           </label>
         </div>
-        <div class="switch-right radio-container" style="${this._config.animated_icons ? 'display: flex;' : 'display: none;'}">
+        <div class="switch-right radio-container" style="${this._flag('animated_icons') ? 'display: flex;' : 'display: none;'}">
           <ha-radio
             name="icon_style"
             value="style1"
             @change="${this._handleIconStyleChange}"
-            .checked="${this._config.icon_style === 'style1'}"
+            .checked="${this._value('icon_style') === 'style1'}"
           ></ha-radio>
           <label class="check-label">
             Style 1
           </label>
         </div>
-        <div class="switch-right radio-container" style="${this._config.animated_icons ? 'display: flex;' : 'display: none;'}">
+        <div class="switch-right radio-container" style="${this._flag('animated_icons') ? 'display: flex;' : 'display: none;'}">
           <ha-radio
             name="icon_style"
             value="style2"
             @change="${this._handleIconStyleChange}"
-            .checked="${this._config.icon_style === 'style2'}"
+            .checked="${this._value('icon_style') === 'style2'}"
           ></ha-radio>
           <label class="check-label">
             Style 2
@@ -652,13 +708,13 @@ class WeatherChartCardEditor extends LitElement {
         <ha-textfield
           label="Size for daily icons"
           type="number"
-          .value="${this._config.icons_size || '35'}"
+          .value="${this._value('icons_size')}"
           @change="${(e) => this._valueChanged(e, 'icons_size')}"
         ></ha-textfield>
         <ha-textfield
           label="Main Weather Icon Size"
           type="number"
-          .value="${this._config.main_icon_size || '150'}"
+          .value="${this._value('main_icon_size')}"
           @change="${(e) => this._valueChanged(e, 'main_icon_size')}"
         ></ha-textfield>
       </div>
@@ -676,7 +732,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container ${this._config.show_forecast === false ? 'locked' : ''}">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'show_main')}"
-              .checked="${this._config.show_main !== false}"
+              .checked="${this._flag('show_main')}"
               .disabled="${this._config.show_forecast === false}"
             ></ha-switch>
             <label class="switch-label">
@@ -686,7 +742,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container ${this._config.show_main === false ? 'locked' : ''}">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'show_forecast')}"
-              .checked="${this._config.show_forecast !== false}"
+              .checked="${this._flag('show_forecast')}"
               .disabled="${this._config.show_main === false}"
             ></ha-switch>
             <label class="switch-label">
@@ -697,7 +753,7 @@ class WeatherChartCardEditor extends LitElement {
         ${this.hasApparentTemperature ? html`
           <ha-switch
             @change="${(e) => this._valueChanged(e, 'show_feels_like')}"
-            .checked="${this._config.show_feels_like !== false}"
+            .checked="${this._flag('show_feels_like')}"
           ></ha-switch>
           <label class="switch-label">
             Show Feels Like Temperature
@@ -708,7 +764,7 @@ class WeatherChartCardEditor extends LitElement {
         ${this.hasDescription ? html`
           <ha-switch
             @change="${(e) => this._valueChanged(e, 'show_description')}"
-            .checked="${this._config.show_description !== false}"
+            .checked="${this._flag('show_description')}"
           ></ha-switch>
           <label class="switch-label">
             Show Weather Description
@@ -718,7 +774,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'show_temperature')}"
-              .checked="${this._config.show_temperature !== false}"
+              .checked="${this._flag('show_temperature')}"
             ></ha-switch>
             <label class="switch-label">
               Show Current Temperature
@@ -727,7 +783,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'show_current_condition')}"
-              .checked="${this._config.show_current_condition !== false}"
+              .checked="${this._flag('show_current_condition')}"
             ></ha-switch>
             <label class="switch-label">
               Show Current Weather Condition
@@ -736,7 +792,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'show_attributes')}"
-              .checked="${this._config.show_attributes !== false}"
+              .checked="${this._flag('show_attributes')}"
             ></ha-switch>
             <label class="switch-label">
               Show Attributes
@@ -745,7 +801,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'show_humidity')}"
-              .checked="${this._config.show_humidity !== false}"
+              .checked="${this._flag('show_humidity')}"
             ></ha-switch>
             <label class="switch-label">
               Show Humidity
@@ -754,7 +810,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'show_pressure')}"
-              .checked="${this._config.show_pressure !== false}"
+              .checked="${this._flag('show_pressure')}"
             ></ha-switch>
             <label class="switch-label">
               Show Pressure
@@ -763,7 +819,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'show_uv')}"
-              .checked="${this._config.show_uv !== false}"
+              .checked="${this._flag('show_uv')}"
             ></ha-switch>
             <label class="switch-label">
               Show UV
@@ -772,7 +828,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'show_sun')}"
-              .checked="${this._config.show_sun !== false}"
+              .checked="${this._flag('show_sun')}"
             ></ha-switch>
             <label class="switch-label">
               Show Sun Dawn/Dusk
@@ -781,7 +837,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'show_wind_direction')}"
-              .checked="${this._config.show_wind_direction !== false}"
+              .checked="${this._flag('show_wind_direction')}"
             ></ha-switch>
             <label class="switch-label">
               Show Wind Direction
@@ -790,7 +846,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'show_wind_speed')}"
-              .checked="${this._config.show_wind_speed !== false}"
+              .checked="${this._flag('show_wind_speed')}"
             ></ha-switch>
             <label class="switch-label">
               Show Wind Speed
@@ -800,7 +856,7 @@ class WeatherChartCardEditor extends LitElement {
         ${this.hasDewpoint ? html`
           <ha-switch
             @change="${(e) => this._valueChanged(e, 'show_dew_point')}"
-            .checked="${this._config.show_dew_point !== false}"
+            .checked="${this._flag('show_dew_point')}"
           ></ha-switch>
           <label class="switch-label">
             Show Dew Point
@@ -811,7 +867,7 @@ class WeatherChartCardEditor extends LitElement {
         ${this.hasWindgustspeed ? html`
           <ha-switch
             @change="${(e) => this._valueChanged(e, 'show_wind_gust_speed')}"
-            .checked="${this._config.show_wind_gust_speed !== false}"
+            .checked="${this._flag('show_wind_gust_speed')}"
           ></ha-switch>
           <label class="switch-label">
             Show Wind Gust Speed
@@ -822,7 +878,7 @@ class WeatherChartCardEditor extends LitElement {
         ${this.hasVisibility ? html`
           <ha-switch
             @change="${(e) => this._valueChanged(e, 'show_visibility')}"
-            .checked="${this._config.show_visibility !== false}"
+            .checked="${this._flag('show_visibility')}"
           ></ha-switch>
           <label class="switch-label">
             Show Visibility
@@ -832,7 +888,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'show_last_changed')}"
-              .checked="${this._config.show_last_changed !== false}"
+              .checked="${this._flag('show_last_changed')}"
             ></ha-switch>
             <label class="switch-label">
               Show when last data changed
@@ -841,7 +897,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'use_12hour_format')}"
-              .checked="${this._config.use_12hour_format !== false}"
+              .checked="${this._flag('use_12hour_format')}"
             ></ha-switch>
             <label class="switch-label">
               Use 12-Hour Format
@@ -850,7 +906,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'autoscroll')}"
-              .checked="${this._config.autoscroll !== false}"
+              .checked="${this._flag('autoscroll')}"
             ></ha-switch>
             <label class="switch-label">
               Autoscroll
@@ -860,66 +916,66 @@ class WeatherChartCardEditor extends LitElement {
             <div class="switch-right">
               <ha-switch
                 @change="${(e) => this._valueChanged(e, 'show_time')}"
-                .checked="${this._config.show_time !== false}"
+                .checked="${this._flag('show_time')}"
               ></ha-switch>
               <label class="switch-label">
                 Show Current Time
               </label>
             </div>
-            <div class="switch-right checkbox-container" style="${this._config.show_time ? 'display: flex;' : 'display: none;'}">
+            <div class="switch-right checkbox-container" style="${this._flag('show_time') ? 'display: flex;' : 'display: none;'}">
               <ha-checkbox
                 @change="${(e) => this._valueChanged(e, 'show_time_seconds')}"
-                .checked="${this._config.show_time_seconds !== false}"
+                .checked="${this._flag('show_time_seconds')}"
               ></ha-checkbox>
               <label class="check-label">
                 Show Seconds
               </label>
             </div>
-            <div class="switch-right checkbox-container" style="${this._config.show_time ? 'display: flex;' : 'display: none;'}">
+            <div class="switch-right checkbox-container" style="${this._flag('show_time') ? 'display: flex;' : 'display: none;'}">
               <ha-checkbox
                 @change="${(e) => this._valueChanged(e, 'show_hour_leading_zero')}"
-                .checked="${this._config.show_hour_leading_zero !== false}"
+                .checked="${this._flag('show_hour_leading_zero')}"
               ></ha-checkbox>
               <label class="check-label">
                 Leading zero for hour
               </label>
             </div>
-            <div class="switch-right checkbox-container" style="${this._config.show_time ? 'display: flex;' : 'display: none;'}">
+            <div class="switch-right checkbox-container" style="${this._flag('show_time') ? 'display: flex;' : 'display: none;'}">
               <ha-checkbox
                 @change="${(e) => this._valueChanged(e, 'show_day')}"
-                .checked="${this._config.show_day !== false}"
+                .checked="${this._flag('show_day')}"
               ></ha-checkbox>
               <label class="check-label">
                 Show Day
               </label>
             </div>
-            <div class="switch-right checkbox-container" style="${this._config.show_time ? 'display: flex;' : 'display: none;'}">
+            <div class="switch-right checkbox-container" style="${this._flag('show_time') ? 'display: flex;' : 'display: none;'}">
               <ha-checkbox
                 @change="${(e) => this._valueChanged(e, 'show_date')}"
-                .checked="${this._config.show_date !== false}"
+                .checked="${this._flag('show_date')}"
               ></ha-checkbox>
               <label class="check-label">
                 Show Date
               </label>
             </div>
           </div>
-            <div class="flex-container" style="${this._config.show_time ? 'display: flex;' : 'display: none;'}">
+            <div class="flex-container" style="${this._flag('show_time') ? 'display: flex;' : 'display: none;'}">
               <ha-textfield
                 label="Time Font Size"
                 type="number"
-                .value="${this._config.time_size || '26'}"
+                .value="${this._value('time_size')}"
                 @change="${(e) => this._valueChanged(e, 'time_size')}"
               ></ha-textfield>
               <ha-textfield
                 label="Date Font Size"
                 type="number"
-                .value="${this._config.day_date_size || '15'}"
+                .value="${this._value('day_date_size')}"
                 @change="${(e) => this._valueChanged(e, 'day_date_size')}"
               ></ha-textfield>
               <ha-textfield
                 label="Temp Font Size"
                 type="number"
-                .value="${this._config.current_temp_size || '38'}"
+                .value="${this._value('current_temp_size')}"
                 @change="${(e) => this._valueChanged(e, 'current_temp_size')}"
               ></ha-textfield>
               </div>
@@ -930,7 +986,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'forecast.condition_icons')}"
-              .checked="${forecastConfig.condition_icons !== false}"
+              .checked="${this._flag('forecast.condition_icons')}"
             ></ha-switch>
             <label class="switch-label">
               Show Condition Icons
@@ -939,7 +995,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'forecast.show_wind_forecast')}"
-              .checked="${forecastConfig.show_wind_forecast !== false}"
+              .checked="${this._flag('forecast.show_wind_forecast')}"
             ></ha-switch>
             <label class="switch-label">
               Show Wind Forecast
@@ -948,7 +1004,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'forecast.round_temp')}"
-              .checked="${forecastConfig.round_temp !== false}"
+              .checked="${this._flag('forecast.round_temp')}"
             ></ha-switch>
             <label class="switch-label">
               Rounding Temperatures
@@ -957,7 +1013,7 @@ class WeatherChartCardEditor extends LitElement {
           <div class="switch-container">
             <ha-switch
               @change="${(e) => this._valueChanged(e, 'forecast.disable_animation')}"
-              .checked="${forecastConfig.disable_animation !== false}"
+              .checked="${this._flag('forecast.disable_animation')}"
             ></ha-switch>
             <label class="switch-label">
               Disable Chart Animation
@@ -979,10 +1035,10 @@ class WeatherChartCardEditor extends LitElement {
               <option value="probability">Probability</option>
             </select>
           </div>
-         <div class="switch-container" ?hidden=${forecastConfig.precipitation_type !== 'rainfall'}>
+         <div class="switch-container" ?hidden=${this._value('forecast.precipitation_type') !== 'rainfall'}>
              <ha-switch
                @change="${(e) => this._valueChanged(e, 'forecast.show_probability')}"
-               .checked="${forecastConfig.show_probability !== false}"
+               .checked="${this._flag('forecast.show_probability')}"
              ></ha-switch>
              <label class="switch-label">
                Show precipitation probability
@@ -991,7 +1047,7 @@ class WeatherChartCardEditor extends LitElement {
          <div class="switch-container">
              <ha-switch
                @change="${(e) => this._valueChanged(e, 'forecast.show_precipitation_labels')}"
-               .checked="${forecastConfig.show_precipitation_labels !== false}"
+               .checked="${this._flag('forecast.show_precipitation_labels')}"
              ></ha-switch>
              <label class="switch-label">
                Show precipitation values on the chart
@@ -1004,13 +1060,13 @@ class WeatherChartCardEditor extends LitElement {
                 type="number"
                 max="100"
                 min="0"
-                .value="${forecastConfig.precip_bar_size || '100'}"
+                .value="${this._value('forecast.precip_bar_size')}"
                 @change="${(e) => this._valueChanged(e, 'forecast.precip_bar_size')}"
               ></ha-textfield>
               <ha-textfield
                 label="Labels Font Size"
                 type="number"
-                .value="${forecastConfig.labels_font_size || '11'}"
+                .value="${this._value('forecast.labels_font_size')}"
                 @change="${(e) => this._valueChanged(e, 'forecast.labels_font_size')}"
               ></ha-textfield>
               </div>
@@ -1018,13 +1074,13 @@ class WeatherChartCardEditor extends LitElement {
               <ha-textfield
                 label="Chart height"
                 type="number"
-                .value="${forecastConfig.chart_height || '180'}"
+                .value="${this._value('forecast.chart_height')}"
                 @change="${(e) => this._valueChanged(e, 'forecast.chart_height')}"
               ></ha-textfield>
               <ha-textfield
                 label="Number of forecasts"
                 type="number"
-                .value="${forecastConfig.number_of_forecasts || '0'}"
+                .value="${this._value('forecast.number_of_forecasts')}"
                 @change="${(e) => this._valueChanged(e, 'forecast.number_of_forecasts')}"
               ></ha-textfield>
               </div>
